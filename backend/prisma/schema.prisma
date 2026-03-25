@@ -1,0 +1,117 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String         @id @default(cuid())
+  email        String         @unique
+  timezone     String         @default("UTC")
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+  Notification Notification[]
+
+  @@map("users")
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  title     String
+  body      String
+  channel   String   @default("default")
+  read      Boolean  @default(false)
+  meta      Json?
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("notifications")
+}
+
+model QuickLink {
+  id        String   @id @default(cuid())
+  label     String
+  url       String
+  icon      String?
+  color     String   @default("#6366f1")
+  order     Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("quick_links")
+}
+
+model Todo {
+  id        String   @id @default(cuid())
+  text      String
+  done      Boolean  @default(false)
+  order     Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("todos")
+}
+
+model DashboardSetting {
+  id           String   @id @default(cuid())
+  calendarUrl  String?
+  rssFeedUrls  String[]
+  updatedAt    DateTime @updatedAt
+
+  @@map("dashboard_settings")
+}
+
+// ─── AI Dashboard Module ─────────────────────────────────────────────────────
+
+model AIDashboardNewsItem {
+  id         String    @id @default(cuid())
+  title      String
+  body       String
+  bodyFormat String    @default("markdown")
+  category   String?
+  priority   Int       @default(0)
+  imageUrl   String?
+  linkUrl    String?
+  pinned     Boolean   @default(false)
+  expiresAt  DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  @@index([pinned, priority, createdAt])
+  @@map("dispatch_news_items")
+}
+
+model AIDashboardWidget {
+  id        String   @id @default(cuid())
+  slug      String   @unique
+  type      String
+  title     String
+  content   Json
+  colSpan   Int      @default(1)
+  rowSpan   Int      @default(1)
+  order     Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("dispatch_widgets")
+}
+
+model AIDashboardMeta {
+  id         String   @id @default(cuid())
+  title      String   @default("AI Dashboard")
+  subtitle   String?
+  theme      Json?
+  layoutCols Int      @default(4)
+  updatedAt  DateTime @updatedAt
+
+  @@map("dispatch_meta")
+}

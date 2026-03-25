@@ -1,0 +1,85 @@
+version: "3.9"
+
+services:
+  api:
+    build:
+      context: .
+      target: dev
+    container_name: prism-api
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: development
+      DATABASE_URL: postgresql://prism:prism_password@postgres:5432/prism_db
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      # Mount source for hot-reload in dev
+      - ./src:/app/src
+      - ./prisma:/app/prisma
+    restart: unless-stopped
+    networks:
+      - prism-net
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: prism-postgres
+    environment:
+      POSTGRES_USER: prism
+      POSTGRES_PASSWORD: prism_password
+      POSTGRES_DB: prism_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U prism -d prism_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - prism-net
+
+  redis:
+    image: redis:7-alpine
+    container_name: prism-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - prism-net
+
+  bull-board:
+    image: deadly0/bull-board
+    container_name: prism-bull-board
+    ports:
+      - "3001:3000"
+    environment:
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - prism-net
+
+volumes:
+  postgres_data:
+  redis_data:
+
+networks:
+  prism-net:
+    driver: bridge
