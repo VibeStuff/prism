@@ -2,13 +2,13 @@
 
 <!-- Hero Banner -->
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://capsule-render.vercel.app/api?type=waving&color=0:6366f1,50:8b5cf6,100:a78bfa&height=220&section=header&text=Prism&fontSize=80&fontColor=ffffff&fontAlignY=35&desc=Modular%20self-hosted%20tools%20you%20actually%20own&descSize=18&descAlignY=55&descColor=e0e7ff&animation=fadeIn">
-  <img src="https://capsule-render.vercel.app/api?type=waving&color=0:6366f1,50:8b5cf6,100:a78bfa&height=220&section=header&text=Prism&fontSize=80&fontColor=ffffff&fontAlignY=35&desc=Modular%20self-hosted%20tools%20you%20actually%20own&descSize=18&descAlignY=55&descColor=e0e7ff&animation=fadeIn" width="100%" alt="Prism">
+  <source media="(prefers-color-scheme: dark)" srcset="https://capsule-render.vercel.app/api?type=waving&color=0:6366f1,50:8b5cf6,100:a78bfa&height=220&section=header&text=Prism&fontSize=80&fontColor=ffffff&fontAlignY=35&desc=真正屬於你的模組化自架工具&descSize=18&descAlignY=55&descColor=e0e7ff&animation=fadeIn">
+  <img src="https://capsule-render.vercel.app/api?type=waving&color=0:6366f1,50:8b5cf6,100:a78bfa&height=220&section=header&text=Prism&fontSize=80&fontColor=ffffff&fontAlignY=35&desc=真正屬於你的模組化自架工具&descSize=18&descAlignY=55&descColor=e0e7ff&animation=fadeIn" width="100%" alt="Prism">
 </picture>
 
 <br>
 
-**Drop a folder in. Get a page. That's it.**
+**丟進一個資料夾，就有一個頁面。就這麼簡單。**
 
 [![Node.js](https://img.shields.io/badge/Node.js-20-339933?style=flat-square&logo=nodedotjs&logoColor=white)](https://nodejs.org/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?style=flat-square&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
@@ -18,30 +18,30 @@
 [![Docker](https://img.shields.io/badge/Docker-Ready-2496ED?style=flat-square&logo=docker&logoColor=white)](https://www.docker.com/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow?style=flat-square)](LICENSE)
 
-**English** | **[繁體中文](README.zh-TW.md)**
+**[English](README.md)** | **繁體中文**
 
 </div>
 
 <br>
 
-## Why Prism?
+## 為什麼選擇 Prism？
 
-Tools like Monday.com, Notion, Linear, and Airtable are powerful — but they're bloated, expensive, and built for someone else's workflow.
+Monday.com、Notion、Linear、Airtable 這些工具很強大——但它們臃腫、昂貴，而且是為別人的工作流程打造的。
 
-With Prism, **you own the stack**. Write the UI exactly how you want it, drop it in a folder, and it's live. Vibe code a custom project tracker, a personal CRM, or a habit tracker in an afternoon and run it yourself — no subscriptions, no vendor lock-in.
+使用 Prism，**你擁有整個技術棧**。按照你想要的方式撰寫 UI，丟進資料夾，它就上線了。花一個下午隨手寫一個自訂專案追蹤器、個人 CRM 或習慣追蹤器，然後自己運行——不用訂閱、不被供應商綁定。
 
 <br>
 
-## How It Works
+## 運作原理
 
-Every page is a **module** — a self-contained folder that the server auto-discovers on startup. No registration, no config changes.
+每個頁面都是一個**模組**——一個獨立的資料夾，伺服器會在啟動時自動探索。不需要註冊，不需要修改設定。
 
 ```
 src/modules/
 │
 ├── 📊 dashboard/        → yoursite.com/dashboard
-│   ├── index.ts         → backend routes + logic
-│   └── public/          → HTML, CSS, JS served automatically
+│   ├── index.ts         → 後端路由 + 邏輯
+│   └── public/          → HTML、CSS、JS 自動提供
 │       ├── index.html
 │       ├── app.js
 │       └── style.css
@@ -55,13 +55,13 @@ src/modules/
     └── public/
 ```
 
-> **That's the whole pattern.** Folder name becomes the route. Static files are served. APIs are scoped. Done.
+> **就是這個模式。** 資料夾名稱就是路由。靜態檔案自動提供。API 自動隔離。完成。
 
 <br>
 
-## Quick Start
+## 快速開始
 
-### Docker (recommended)
+### Docker（推薦）
 
 ```bash
 git clone https://github.com/AnthonyChen05/prism.git
@@ -70,20 +70,20 @@ cd prism/backend
 cp .env.example .env
 docker compose up -d
 
-# First time — run migrations
+# 首次使用——執行資料庫遷移
 docker compose exec api npx prisma migrate dev --name init
 ```
 
-Then open **http://localhost:3000**
+然後開啟 **http://localhost:3000**
 
-### Local Dev
+### 本地開發
 
-Requires PostgreSQL and Redis running locally.
+需要在本機運行 PostgreSQL 和 Redis。
 
 ```bash
 cd backend
 npm install
-cp .env.example .env        # then update DATABASE_URL and REDIS_HOST
+cp .env.example .env        # 然後更新 DATABASE_URL 和 REDIS_HOST
 
 npx prisma generate
 npx prisma migrate dev --name init
@@ -92,9 +92,9 @@ npm run dev
 
 <br>
 
-## Creating a Module
+## 建立模組
 
-A module needs one file: `src/modules/<name>/index.ts`
+模組只需要一個檔案：`src/modules/<name>/index.ts`
 
 ```typescript
 import type { AppModule } from '../../shared/types/module'
@@ -104,14 +104,14 @@ const MyModule: AppModule = {
   version: '1.0.0',
 
   async register(server, services, prefix) {
-    // prefix = "/my-module" — derived from folder name
+    // prefix = "/my-module" — 由資料夾名稱推導
 
-    // Serve a page
+    // 提供頁面
     server.get(prefix, { config: { public: true } } as never, async (_req, reply) => {
-      reply.type('text/html').send('<h1>Hello from my module</h1>')
+      reply.type('text/html').send('<h1>來自我的模組的問候</h1>')
     })
 
-    // Add API routes
+    // 新增 API 路由
     server.get(`${prefix}/api/data`, { config: { public: true } } as never, async () => {
       return { items: await services.db.yourModel.findMany() }
     })
@@ -121,16 +121,16 @@ const MyModule: AppModule = {
 export default MyModule
 ```
 
-Add a `public/` folder next to it and your static files are served at `/<name>-assets/`.
+在旁邊新增一個 `public/` 資料夾，你的靜態檔案就會在 `/<name>-assets/` 下提供。
 
-**In your HTML** — use `{{ASSETS}}` for asset paths (replaced at serve time):
+**在 HTML 中** — 使用 `{{ASSETS}}` 作為資源路徑（在提供時替換）：
 
 ```html
 <link rel="stylesheet" href="{{ASSETS}}/style.css" />
 <script src="{{ASSETS}}/app.js"></script>
 ```
 
-**In your JS** — use `window.location.pathname` as the API base:
+**在 JS 中** — 使用 `window.location.pathname` 作為 API 基礎路徑：
 
 ```js
 const API = window.location.pathname.replace(/\/$/, '')
@@ -139,23 +139,23 @@ const data = await fetch(API + '/api/data').then(r => r.json())
 
 <br>
 
-## What's Included
+## 內建功能
 
-### Built-in Dashboard
+### 內建儀表板
 
-The default landing page — a personal home screen with:
+預設首頁——個人主畫面，包含：
 
-| Widget | Description |
+| 小工具 | 說明 |
 |:--|:--|
-| **Quick Links** | Bookmark your most-used sites with custom icons and colors |
-| **To-Do List** | Simple persistent tasks with drag-to-reorder |
-| **Google Calendar** | Embed your calendar with a single URL |
-| **RSS Feeds** | Follow any RSS/Atom feed (server-side proxy, no CORS issues) |
-| **Custom Background** | Upload your own image, stored locally |
+| **快速連結** | 用自訂圖示和顏色收藏常用網站 |
+| **待辦清單** | 簡單的持久化任務，支援拖曳排序 |
+| **Google 日曆** | 用一個 URL 嵌入你的日曆 |
+| **RSS 訂閱** | 訂閱任何 RSS/Atom 來源（伺服器端代理，無 CORS 問題） |
+| **自訂背景** | 上傳你自己的圖片，儲存在本地 |
 
-### Core Services
+### 核心服務
 
-Every module gets access to the full service layer via dependency injection:
+每個模組都能透過依賴注入取得完整的服務層：
 
 ```
 ┌─────────────────────────────────────────────────────────┐
@@ -173,39 +173,39 @@ Every module gets access to the full service layer via dependency injection:
 │                                                         │
 │  ┌──────────────────────────────────────────────────┐  │
 │  │              scheduler (BullMQ)                   │  │
-│  │          Persistent job queue via Redis            │  │
+│  │          透過 Redis 的持久化工作佇列               │  │
 │  └──────────────────────────────────────────────────┘  │
 └─────────────────────────────────────────────────────────┘
 ```
 
 <details>
-<summary><strong>TypeScript interface</strong></summary>
+<summary><strong>TypeScript 介面</strong></summary>
 
 ```typescript
 interface CoreServices {
-  db: PrismaClient            // PostgreSQL via Prisma — query anything
-  time: TimeService           // Timezone-aware date/time (Luxon)
-  notify: NotificationService // Send real-time notifications via Socket.io
-  timer: TimerService         // Schedule actions to fire after a delay
-  scheduler: Scheduler        // Raw BullMQ job scheduling
-  events: EventBus            // Pub/sub between modules
+  db: PrismaClient            // 透過 Prisma 操作 PostgreSQL — 查詢任何資料
+  time: TimeService           // 時區感知的日期/時間（Luxon）
+  notify: NotificationService // 透過 Socket.io 發送即時通知
+  timer: TimerService         // 排程延遲觸發的動作
+  scheduler: Scheduler        // 原生 BullMQ 工作排程
+  events: EventBus            // 模組間的發布/訂閱
 }
 ```
 
 </details>
 
-### Timer Actions
+### 計時器動作
 
-Schedule anything to happen after a delay:
+排程任何延遲執行的事件：
 
 ```typescript
-// Notify in 24 hours
+// 24 小時後通知
 await services.timer.after('daily-reminder', 86_400_000, {
   type: 'notify',
-  payload: { userId: 'user-1', title: 'Daily check-in', body: 'How are your tasks looking?' }
+  payload: { userId: 'user-1', title: '每日簽到', body: '你的任務進展如何？' }
 })
 
-// Emit an event to other modules in 5 seconds
+// 5 秒後向其他模組發送事件
 await services.timer.after('sync-trigger', 5000, {
   type: 'event',
   event: 'crm:sync',
@@ -215,11 +215,11 @@ await services.timer.after('sync-trigger', 5000, {
 
 <br>
 
-## Architecture
+## 架構
 
 ```
                     ┌──────────────────────┐
-                    │     Client / Browser  │
+                    │     客戶端 / 瀏覽器   │
                     └──────────┬───────────┘
                                │
                     ┌──────────▼───────────┐
@@ -230,14 +230,14 @@ await services.timer.after('sync-trigger', 5000, {
                ┌───────────────┼───────────────┐
                │               │               │
       ┌────────▼──────┐ ┌─────▼─────┐ ┌───────▼───────┐
-      │   Dashboard   │ │   Time    │ │ Notifications │
-      │    Module     │ │  Module   │ │    Module     │
+      │    儀表板     │ │   時間    │ │     通知      │
+      │     模組     │ │   模組    │ │     模組      │
       └────────┬──────┘ └─────┬─────┘ └───────┬───────┘
                │               │               │
                └───────────────┼───────────────┘
                                │
                     ┌──────────▼───────────┐
-                    │    Core Services     │
+                    │      核心服務        │
                     │  db · time · events  │
                     │ notify · timer · sched│
                     └─────┬──────────┬─────┘
@@ -250,32 +250,32 @@ await services.timer.after('sync-trigger', 5000, {
 
 <br>
 
-## Tech Stack
+## 技術棧
 
-| Layer | Technology | Purpose |
+| 層級 | 技術 | 用途 |
 |:--|:--|:--|
-| **Runtime** | Node.js 20 + TypeScript | Server-side logic |
-| **Framework** | Fastify 5 | HTTP server + routing |
-| **Database** | PostgreSQL 16 + Prisma | Persistent storage + ORM |
-| **Queue** | BullMQ + Redis 7 | Background jobs + scheduling |
-| **Realtime** | Socket.io | Live push notifications |
-| **Auth** | JWT | Route protection |
-| **Container** | Docker + Docker Compose | One-command deployment |
+| **執行環境** | Node.js 20 + TypeScript | 伺服器端邏輯 |
+| **框架** | Fastify 5 | HTTP 伺服器 + 路由 |
+| **資料庫** | PostgreSQL 16 + Prisma | 持久化儲存 + ORM |
+| **佇列** | BullMQ + Redis 7 | 背景工作 + 排程 |
+| **即時通訊** | Socket.io | 即時推播通知 |
+| **認證** | JWT | 路由保護 |
+| **容器** | Docker + Docker Compose | 一鍵部署 |
 
 <br>
 
-## Configuration
+## 設定
 
-| Variable | Default | Description |
+| 變數 | 預設值 | 說明 |
 |:--|:--|:--|
-| `PORT` | `3000` | Server port |
-| `LANDING_MODULE` | `dashboard` | Module to redirect `/` to |
-| `DATABASE_URL` | *(see .env.example)* | PostgreSQL connection string |
-| `REDIS_HOST` | `redis` | Redis hostname |
-| `JWT_SECRET` | *(change this)* | JWT signing secret |
-| `JWT_EXPIRES_IN` | `15m` | Access token lifetime |
+| `PORT` | `3000` | 伺服器埠號 |
+| `LANDING_MODULE` | `dashboard` | 將 `/` 重新導向至的模組 |
+| `DATABASE_URL` | *（見 .env.example）* | PostgreSQL 連線字串 |
+| `REDIS_HOST` | `redis` | Redis 主機名稱 |
+| `JWT_SECRET` | *（請修改）* | JWT 簽名密鑰 |
+| `JWT_EXPIRES_IN` | `15m` | 存取權杖有效期 |
 
-To change the landing page:
+變更首頁：
 
 ```env
 LANDING_MODULE=kanban
@@ -283,43 +283,43 @@ LANDING_MODULE=kanban
 
 <br>
 
-## Module Ideas
+## 模組靈感
 
-Things people pay monthly subscriptions for that you can vibe code in a weekend:
+你可以在一個週末隨手寫出來的東西，而不用每月付費訂閱：
 
-| Build This | Instead of Paying For |
+| 自己做 | 取代付費服務 |
 |:--|:--|
-| Kanban board | Trello / Linear |
-| Project tracker | Monday.com / Asana |
-| Personal CRM | HubSpot |
-| Habit tracker | Streaks / Habitica |
-| Reading list | Pocket / Instapaper |
-| Budget tracker | Mint / YNAB |
-| Note-taking | Notion |
-| Time tracker | Toggl |
-| Link board | Linktree |
-| Status page | Statuspage.io |
+| 看板 | Trello / Linear |
+| 專案追蹤器 | Monday.com / Asana |
+| 個人 CRM | HubSpot |
+| 習慣追蹤器 | Streaks / Habitica |
+| 閱讀清單 | Pocket / Instapaper |
+| 預算追蹤器 | Mint / YNAB |
+| 筆記工具 | Notion |
+| 時間追蹤器 | Toggl |
+| 連結頁面 | Linktree |
+| 狀態頁面 | Statuspage.io |
 
-> Every one of these is a folder with an HTML file and some API routes.
+> 每一個都只是一個資料夾，裡面放 HTML 檔案和一些 API 路由。
 
 <br>
 
-## Project Structure
+## 專案結構
 
 ```
 prism/
 ├── backend/
 │   ├── src/
 │   │   ├── core/
-│   │   │   ├── server.ts              # Server bootstrap, auth, Socket.io
-│   │   │   ├── plugin-loader.ts       # Auto-discovers modules
-│   │   │   └── services/              # db, time, notify, timer, scheduler, events
+│   │   │   ├── server.ts              # 伺服器啟動、認證、Socket.io
+│   │   │   ├── plugin-loader.ts       # 自動探索模組
+│   │   │   └── services/              # db、time、notify、timer、scheduler、events
 │   │   ├── modules/
-│   │   │   ├── dashboard/             # Built-in personal dashboard
-│   │   │   ├── time/                  # Time + timer API
-│   │   │   └── notifications/         # Notification history + push
+│   │   │   ├── dashboard/             # 內建個人儀表板
+│   │   │   ├── time/                  # 時間 + 計時器 API
+│   │   │   └── notifications/         # 通知歷史 + 推播
 │   │   └── shared/
-│   │       └── types/module.ts        # AppModule, CoreServices, TimerAction
+│   │       └── types/module.ts        # AppModule、CoreServices、TimerAction
 │   ├── prisma/schema.prisma
 │   ├── docker-compose.yml
 │   ├── Dockerfile
@@ -329,9 +329,9 @@ prism/
 
 <br>
 
-## License
+## 授權條款
 
-MIT — do whatever you want with it.
+MIT — 你想怎麼用就怎麼用。
 
 <div align="center">
 
