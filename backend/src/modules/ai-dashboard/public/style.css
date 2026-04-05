@@ -293,6 +293,191 @@ body {
   background: #fff;
 }
 
+/* ── Custom Widget Styling ───────────────────────────── */
+.widget-custom {
+  background: var(--w-bg, var(--cream-80));
+  border-color: var(--w-border, var(--border));
+  color: var(--w-text, var(--text-dark));
+}
+
+.widget-custom .widget-title {
+  color: var(--w-header, var(--text-mid));
+}
+
+/* Stat */
+.widget-custom .widget-stat-value {
+  color: var(--w-text, var(--text-dark));
+}
+.widget-custom .widget-stat-label {
+  color: var(--w-text, var(--text-muted));
+  opacity: 0.7;
+}
+.widget-custom .widget-stat-change {
+  color: inherit;
+}
+.widget-custom .widget-stat-change.up {
+  color: #6fdf60;
+  background: rgba(111, 223, 96, 0.15);
+}
+.widget-custom .widget-stat-change.down {
+  color: #ff7b7b;
+  background: rgba(255, 123, 123, 0.15);
+}
+.widget-custom .widget-stat-change.neutral {
+  color: var(--w-text, var(--text-muted));
+  opacity: 0.7;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+/* Markdown */
+.widget-custom .widget-markdown,
+.widget-custom .widget-markdown p,
+.widget-custom .widget-markdown li,
+.widget-custom .widget-markdown td {
+  color: var(--w-text, var(--text-dark));
+}
+.widget-custom .widget-markdown h1,
+.widget-custom .widget-markdown h2,
+.widget-custom .widget-markdown h3 {
+  color: var(--w-text, var(--text-dark));
+}
+.widget-custom .widget-markdown a {
+  color: var(--w-accent, var(--amber));
+}
+.widget-custom .widget-markdown blockquote {
+  border-left-color: var(--w-accent, var(--amber));
+  color: var(--w-text, var(--text-mid));
+  opacity: 0.8;
+}
+.widget-custom .widget-markdown code {
+  background: rgba(255, 255, 255, 0.1);
+}
+.widget-custom .widget-markdown pre {
+  background: rgba(0, 0, 0, 0.2);
+  border-color: var(--w-border, var(--border));
+}
+
+/* List */
+.widget-custom .widget-list-item {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.1);
+  color: var(--w-text, var(--text-dark));
+}
+.widget-custom .widget-list-item:hover {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.18);
+}
+.widget-custom .widget-list-item a {
+  color: var(--w-accent, var(--amber));
+}
+
+/* Chart */
+.widget-custom .chart-bar-label,
+.widget-custom .chart-legend-item {
+  color: var(--w-text, var(--text-mid));
+  opacity: 0.7;
+}
+.widget-custom .chart-line-svg line {
+  stroke: rgba(255, 255, 255, 0.1);
+}
+.widget-custom .chart-line-svg text {
+  fill: var(--w-text, var(--text-muted));
+  opacity: 0.7;
+}
+.widget-custom .chart-pie-pct {
+  color: var(--w-text, var(--text-dark));
+}
+.widget-custom .chart-analytics-item {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.1);
+}
+.widget-custom .chart-analytics-label {
+  color: var(--w-text, var(--text-muted));
+  opacity: 0.7;
+}
+.widget-custom .chart-analytics-val {
+  color: var(--w-text, var(--text-dark));
+}
+
+/* Progress */
+.widget-custom .progress-label {
+  color: var(--w-text, var(--text-mid));
+}
+.widget-custom .progress-pct {
+  color: var(--w-accent, var(--amber));
+}
+.widget-custom .progress-track {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+/* Table */
+.widget-custom .widget-table th {
+  color: var(--w-header, var(--text-muted));
+  border-bottom-color: rgba(255, 255, 255, 0.15);
+  background: var(--w-bg, var(--cream-80));
+}
+.widget-custom .widget-table td {
+  color: var(--w-text, var(--text-dark));
+  border-bottom-color: rgba(255, 255, 255, 0.08);
+}
+.widget-custom .widget-table.striped tbody tr:nth-child(even) td {
+  background: rgba(255, 255, 255, 0.04);
+}
+.widget-custom .widget-table tbody tr:hover td {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+/* Image */
+.widget-custom .widget-image-caption {
+  color: var(--w-text, var(--text-muted));
+  opacity: 0.7;
+}
+
+/* Countdown */
+.widget-custom .countdown-label {
+  color: var(--w-text, var(--text-muted));
+  opacity: 0.8;
+}
+.widget-custom .countdown-num {
+  color: var(--w-accent, var(--w-text, #fff));
+}
+.widget-custom .countdown-txt {
+  color: var(--w-text, var(--text-muted));
+  opacity: 0.6;
+}
+.widget-custom .countdown-sep {
+  color: var(--w-text, var(--text-muted));
+  opacity: 0.4;
+}
+.widget-custom .countdown-expired {
+  color: var(--w-accent, var(--amber));
+}
+
+/* Key-Value */
+.widget-custom .kv-row:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+.widget-custom .kv-key {
+  color: var(--w-text, var(--text-muted));
+  opacity: 0.7;
+}
+.widget-custom .kv-value {
+  color: var(--w-text, var(--text-dark));
+}
+.widget-custom .kv-value a {
+  color: var(--w-accent, var(--amber));
+}
+
+.widget-link-wrap {
+  text-decoration: none;
+  color: inherit;
+  display: block;
+}
+
+.widget-title-icon {
+  margin-right: 6px;
+}
+
 /* ── Chart Widget ────────────────────────────────────── */
 .widget-chart {
   width: 100%;
@@ -305,6 +490,7 @@ body {
   gap: 3px;
   height: 140px;
   padding-top: 8px;
+  position: relative;
 }
 
 .chart-bar-wrap {
@@ -353,6 +539,301 @@ body {
   width: 8px; height: 8px;
   border-radius: 2px;
   flex-shrink: 0;
+}
+
+/* ── Bar Chart Trendline Overlay ────────────────────── */
+.chart-bar-trendline {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: calc(100% - 20px);
+  pointer-events: none;
+  overflow: visible;
+}
+
+/* ── Line Chart ─────────────────────────────────────── */
+.chart-line-svg {
+  width: 100%;
+  height: auto;
+}
+
+/* ── Pie / Doughnut Chart ───────────────────────────── */
+.widget-chart-pie {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.chart-pie-svg {
+  width: 160px;
+  height: 140px;
+  flex-shrink: 0;
+}
+
+.chart-pie-legend {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.75rem;
+  min-width: 0;
+  flex: 1;
+}
+
+.chart-pie-pct {
+  margin-left: auto;
+  font-weight: 500;
+  color: var(--text-dark);
+}
+
+/* ── Chart Analytics Panel ──────────────────────────── */
+.chart-analytics {
+  display: flex;
+  gap: 6px;
+  margin-top: 10px;
+  flex-wrap: wrap;
+}
+
+.chart-analytics-item {
+  flex: 1;
+  min-width: 52px;
+  background: rgba(0, 0, 0, 0.03);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 6px 8px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+
+.chart-analytics-label {
+  font-size: 0.6rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+}
+
+.chart-analytics-val {
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: var(--text-dark);
+  font-family: 'Playfair Display', Georgia, serif;
+}
+
+/* ── Progress Widget ────────────────────────────────── */
+.widget-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.progress-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.progress-label {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.78rem;
+  color: var(--w-text, var(--text-mid));
+}
+
+.progress-pct {
+  font-weight: 500;
+  color: var(--w-accent, var(--amber));
+}
+
+.progress-track {
+  width: 100%;
+  height: 8px;
+  background: rgba(0, 0, 0, 0.06);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  border-radius: 4px;
+  transition: width 0.5s var(--ease);
+}
+
+/* ── Table Widget ───────────────────────────────────── */
+.widget-table-wrap {
+  overflow-x: auto;
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.widget-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8rem;
+}
+
+.widget-table th {
+  text-align: left;
+  font-weight: 600;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--w-header, var(--text-muted));
+  padding: 6px 10px;
+  border-bottom: 2px solid var(--w-border, var(--border));
+  position: sticky;
+  top: 0;
+  background: var(--w-bg, var(--cream-80));
+}
+
+.widget-table td {
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border);
+  color: var(--w-text, var(--text-dark));
+}
+
+.widget-table.striped tbody tr:nth-child(even) td {
+  background: rgba(0, 0, 0, 0.02);
+}
+
+.widget-table tbody tr:hover td {
+  background: var(--amber-light);
+}
+
+/* ── Image Widget ───────────────────────────────────── */
+.widget-image {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.widget-image img {
+  width: 100%;
+  max-height: 300px;
+  border-radius: var(--radius-sm);
+}
+
+.widget-image-caption {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  text-align: center;
+  font-style: italic;
+}
+
+/* ── Countdown Widget ───────────────────────────────── */
+.widget-countdown {
+  text-align: center;
+}
+
+.countdown-label {
+  font-size: 0.78rem;
+  color: var(--w-text, var(--text-muted));
+  margin-bottom: 10px;
+}
+
+.countdown-display {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+
+.countdown-unit {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 44px;
+}
+
+.countdown-num {
+  font-family: 'Playfair Display', Georgia, serif;
+  font-size: 1.8rem;
+  font-weight: 500;
+  color: var(--w-accent, var(--amber));
+  line-height: 1.1;
+}
+
+.countdown-txt {
+  font-size: 0.62rem;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--text-muted);
+}
+
+.countdown-sep {
+  font-size: 1.4rem;
+  color: var(--text-muted);
+  padding-bottom: 14px;
+}
+
+.countdown-expired {
+  display: none;
+  margin-top: 8px;
+  font-size: 0.78rem;
+  color: var(--w-accent, var(--amber));
+  font-weight: 500;
+}
+
+/* ── Key-Value Widget ───────────────────────────────── */
+.widget-kv {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.kv-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 5px 8px;
+  border-radius: 6px;
+  transition: background var(--t);
+}
+
+.kv-row:hover {
+  background: rgba(0, 0, 0, 0.03);
+}
+
+.kv-key {
+  font-size: 0.78rem;
+  color: var(--w-text, var(--text-muted));
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.kv-icon {
+  font-size: 0.9rem;
+  flex-shrink: 0;
+}
+
+.kv-value {
+  font-size: 0.83rem;
+  font-weight: 500;
+  color: var(--w-text, var(--text-dark));
+  text-align: right;
+  min-width: 0;
+}
+
+.kv-value a {
+  color: var(--w-accent, var(--amber));
+  text-decoration: none;
+}
+
+.kv-value a:hover {
+  text-decoration: underline;
+}
+
+/* ── Embed Widget ───────────────────────────────────── */
+.widget-embed-frame {
+  border: none;
+  width: 100%;
+  border-radius: var(--radius-sm);
+  background: #fff;
 }
 
 /* ═══════════════════════════════════════════════════════

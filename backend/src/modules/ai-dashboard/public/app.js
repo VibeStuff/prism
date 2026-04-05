@@ -51,6 +51,44 @@ function timeAgo(dateStr) {
 let activeCategory = null
 const CHART_COLORS = ['#b8831a', '#4a6fa8', '#5a8a4a', '#a84040', '#8a5ab8', '#4a8a8a', '#b85a1a', '#1a8ab8']
 
+// ── Chart Math Helpers ──────────────────────────────────
+
+function computeTrendline(data) {
+  const n = data.length
+  if (n < 2) return null
+  const xMean = (n - 1) / 2
+  const yMean = data.reduce((a, b) => a + b, 0) / n
+  let num = 0, den = 0
+  for (let i = 0; i < n; i++) {
+    num += (i - xMean) * (data[i] - yMean)
+    den += (i - xMean) ** 2
+  }
+  const slope = den === 0 ? 0 : num / den
+  return { slope, intercept: yMean - slope * xMean }
+}
+
+function formatAxisVal(v) {
+  if (Math.abs(v) >= 1000000) return (v / 1000000).toFixed(1) + 'M'
+  if (Math.abs(v) >= 1000) return (v / 1000).toFixed(1) + 'K'
+  if (!Number.isInteger(v) && Math.abs(v) < 100) return v.toFixed(1)
+  return String(Math.round(v))
+}
+
+function renderChartAnalytics(datasets) {
+  const allData = datasets.flatMap(d => (d.data || []).map(p => typeof p === 'object' ? p.y : p))
+  if (!allData.length) return ''
+  const min = Math.min(...allData)
+  const max = Math.max(...allData)
+  const avg = allData.reduce((a, b) => a + b, 0) / allData.length
+  const sum = allData.reduce((a, b) => a + b, 0)
+  return `<div class="chart-analytics">
+    <div class="chart-analytics-item"><span class="chart-analytics-label">Min</span><span class="chart-analytics-val">${formatAxisVal(min)}</span></div>
+    <div class="chart-analytics-item"><span class="chart-analytics-label">Max</span><span class="chart-analytics-val">${formatAxisVal(max)}</span></div>
+    <div class="chart-analytics-item"><span class="chart-analytics-label">Avg</span><span class="chart-analytics-val">${formatAxisVal(avg)}</span></div>
+    <div class="chart-analytics-item"><span class="chart-analytics-label">Sum</span><span class="chart-analytics-val">${formatAxisVal(sum)}</span></div>
+  </div>`
+}
+
 // ── Data Loading ────────────────────────────────────────
 
 async function loadMeta() {
@@ -100,17 +138,36 @@ function renderWidgets(widgets) {
   grid.style.display = ''
 
   grid.innerHTML = widgets.map((w, i) => {
-    const style = []
-    if (w.colSpan > 1) style.push(`grid-column: span ${w.colSpan}`)
-    if (w.rowSpan > 1) style.push(`grid-row: span ${w.rowSpan}`)
-    const styleAttr = style.length ? ` style="${style.join(';')}"` : ''
-    const delay = ` style="${style.length ? style.join(';') + ';' : ''}animation-delay:${i * 0.04}s"`
+    const gridStyle = []
+    if (w.colSpan > 1) gridStyle.push(`grid-column: span ${w.colSpan}`)
+    if (w.rowSpan > 1) gridStyle.push(`grid-row: span ${w.rowSpan}`)
+    gridStyle.push(`animation-delay:${i * 0.04}s`)
 
-    return `<div class="widget-card"${delay}>
-      <div class="widget-title">${esc(w.title)}</div>
-      ${renderWidgetContent(w)}
-    </div>`
+    // Per-widget custom styling
+    const s = w.style || {}
+    if (s.bgColor) gridStyle.push(`--w-bg: ${s.bgColor}`)
+    if (s.bgGradient) gridStyle.push(`--w-bg: ${s.bgGradient}`)
+    if (s.headerColor) gridStyle.push(`--w-header: ${s.headerColor}`)
+    if (s.textColor) gridStyle.push(`--w-text: ${s.textColor}`)
+    if (s.borderColor) gridStyle.push(`--w-border: ${s.borderColor}`)
+    if (s.accentColor) gridStyle.push(`--w-accent: ${s.accentColor}`)
+    if (s.opacity != null) gridStyle.push(`opacity: ${s.opacity}`)
+    if (s.padding) gridStyle.push(`padding: ${s.padding}`)
+    const hasCustom = s.bgColor || s.bgGradient || s.headerColor || s.textColor || s.borderColor || s.accentColor
+    const cls = `widget-card${hasCustom ? ' widget-custom' : ''}`
+
+    const icon = w.icon ? `<span class="widget-title-icon">${esc(w.icon)}</span>` : ''
+    const titleHtml = `<div class="widget-title">${icon}${esc(w.title)}</div>`
+    const inner = `${titleHtml}${renderWidgetContent(w)}`
+    const body = w.link
+      ? `<a href="${esc(w.link)}" target="_blank" rel="noopener" class="widget-link-wrap">${inner}</a>`
+      : inner
+
+    return `<div class="${cls}" style="${gridStyle.join(';')}">${body}</div>`
   }).join('')
+
+  // Start any countdown timers
+  startCountdowns()
 }
 
 function renderWidgetContent(w) {
@@ -121,6 +178,12 @@ function renderWidgetContent(w) {
     case 'markdown': return renderMarkdownWidget(c)
     case 'html': return renderHtmlWidget(c)
     case 'chart': return renderChartWidget(c)
+    case 'progress': return renderProgressWidget(c)
+    case 'table': return renderTableWidget(c)
+    case 'image': return renderImageWidget(c)
+    case 'countdown': return renderCountdownWidget(c)
+    case 'kv': return renderKvWidget(c)
+    case 'embed': return renderEmbedWidget(c)
     default: return `<div class="widget-markdown"><p>Unknown widget type: ${esc(w.type)}</p></div>`
   }
 }
@@ -160,11 +223,18 @@ function renderHtmlWidget(c) {
 
 function renderChartWidget(c) {
   const { chartType, labels, datasets } = c
-  if (chartType === 'bar' && labels && datasets) return renderBarChart(labels, datasets)
+  if (!datasets) return `<div class="widget-markdown"><p>Chart: missing data</p></div>`
+  if (chartType === 'scatter') return renderScatterChart(datasets, c)
+  if (!labels) return `<div class="widget-markdown"><p>Chart: missing labels</p></div>`
+  if (chartType === 'bar') return renderBarChart(labels, datasets, c)
+  if (chartType === 'line' || chartType === 'area') return renderLineChart(labels, datasets, c)
+  if (chartType === 'pie' || chartType === 'doughnut') return renderPieChart(labels, datasets, chartType)
   return `<div class="widget-markdown"><p>Chart: ${esc(chartType || 'unknown')}</p></div>`
 }
 
-function renderBarChart(labels, datasets) {
+function renderBarChart(labels, datasets, c = {}) {
+  const showTrend = c.trendline === true
+  const showAnalytics = c.analytics === true
   const allValues = datasets.flatMap(d => d.data || [])
   const maxVal = Math.max(...allValues, 1)
 
@@ -179,19 +249,344 @@ function renderBarChart(labels, datasets) {
     })
     html += `<div class="chart-bar-label">${esc(label)}</div></div>`
   })
-  html += '</div>'
 
-  if (datasets.length > 1) {
-    html += '<div class="chart-legend">'
-    datasets.forEach((ds, di) => {
+  // Trendline SVG overlay (positioned absolutely over the bars)
+  if (showTrend) {
+    const lines = datasets.map((ds, di) => {
+      const data = ds.data || []
+      if (data.length < 2) return ''
       const color = ds.color || CHART_COLORS[di % CHART_COLORS.length]
-      html += `<div class="chart-legend-item"><div class="chart-legend-dot" style="background:${color}"></div>${esc(ds.label || '')}</div>`
-    })
-    html += '</div>'
+      const trend = computeTrendline(data)
+      if (!trend) return ''
+      const n = data.length
+      const x0 = (0.5 / n) * 100
+      const x1 = ((n - 0.5) / n) * 100
+      const y0 = Math.max(0, Math.min(100, 100 - (trend.intercept / maxVal) * 100))
+      const y1 = Math.max(0, Math.min(100, 100 - ((trend.slope * (n - 1) + trend.intercept) / maxVal) * 100))
+      return `<line x1="${x0}" y1="${y0}" x2="${x1}" y2="${y1}" stroke="${color}" stroke-width="2" stroke-dasharray="6,3" opacity="0.85"/>`
+    }).join('')
+    if (lines) {
+      html += `<svg class="chart-bar-trendline" viewBox="0 0 100 100" preserveAspectRatio="none">${lines}</svg>`
+    }
   }
 
   html += '</div>'
+  html += renderChartLegend(datasets)
+  if (showAnalytics) html += renderChartAnalytics(datasets)
+  html += '</div>'
   return html
+}
+
+function renderLineChart(labels, datasets, c = {}) {
+  const showTrend = c.trendline === true
+  const showAnalytics = c.analytics === true
+  const isArea = c.chartType === 'area'
+  const W = 300, H = 140, PAD = 24
+  const allValues = datasets.flatMap(d => d.data || [])
+  const maxVal = Math.max(...allValues, 1)
+  const minVal = Math.min(...allValues, 0)
+  const range = maxVal - minVal || 1
+  const stepX = (W - PAD * 2) / Math.max(labels.length - 1, 1)
+
+  let svg = `<svg viewBox="0 0 ${W} ${H + 20}" class="chart-line-svg">`
+
+  // Grid lines with Y-axis value labels
+  for (let i = 0; i <= 4; i++) {
+    const y = PAD + ((H - PAD * 2) * i / 4)
+    const val = maxVal - (range * i / 4)
+    svg += `<line x1="${PAD}" y1="${y}" x2="${W - PAD}" y2="${y}" stroke="var(--border)" stroke-width="0.5"/>`
+    svg += `<text x="${PAD - 3}" y="${y + 3}" text-anchor="end" fill="var(--text-muted)" font-size="7">${formatAxisVal(val)}</text>`
+  }
+
+  // Average reference line
+  if (showAnalytics && allValues.length) {
+    const avg = allValues.reduce((a, b) => a + b, 0) / allValues.length
+    const avgY = H - PAD - ((avg - minVal) / range) * (H - PAD * 2)
+    svg += `<line x1="${PAD}" y1="${avgY}" x2="${W - PAD}" y2="${avgY}" stroke="var(--amber)" stroke-width="1" stroke-dasharray="4,3" opacity="0.55"/>`
+    svg += `<text x="${W - PAD + 3}" y="${avgY + 3}" fill="var(--amber)" font-size="7" opacity="0.8">avg</text>`
+  }
+
+  datasets.forEach((ds, di) => {
+    const color = ds.color || CHART_COLORS[di % CHART_COLORS.length]
+    const data = ds.data || []
+    const points = data.map((val, i) => {
+      const x = PAD + i * stepX
+      const y = H - PAD - ((val - minVal) / range) * (H - PAD * 2)
+      return { x, y, val }
+    })
+    const ptStr = points.map(p => `${p.x},${p.y}`).join(' ')
+
+    // Area fill (more opaque for 'area' type)
+    if (points.length > 1) {
+      const first = points[0].x
+      const last = points[points.length - 1].x
+      svg += `<polygon points="${first},${H - PAD} ${ptStr} ${last},${H - PAD}" fill="${color}" opacity="${isArea ? 0.22 : 0.08}"/>`
+    }
+    // Line
+    svg += `<polyline points="${ptStr}" fill="none" stroke="${color}" stroke-width="${isArea ? 2.5 : 2}" stroke-linejoin="round" stroke-linecap="round"/>`
+    // Dots
+    points.forEach(({ x, y, val }) => {
+      svg += `<circle cx="${x}" cy="${y}" r="3" fill="${color}"><title>${esc(ds.label || '')}: ${val}</title></circle>`
+    })
+
+    // Trendline (linear regression)
+    if (showTrend && data.length >= 2) {
+      const trend = computeTrendline(data)
+      if (trend) {
+        const tx0 = PAD
+        const ty0 = H - PAD - ((trend.intercept - minVal) / range) * (H - PAD * 2)
+        const lastIdx = data.length - 1
+        const tx1 = PAD + lastIdx * stepX
+        const ty1 = H - PAD - ((trend.slope * lastIdx + trend.intercept - minVal) / range) * (H - PAD * 2)
+        svg += `<line x1="${tx0}" y1="${ty0}" x2="${tx1}" y2="${ty1}" stroke="${color}" stroke-width="1.5" stroke-dasharray="5,3" opacity="0.7"/>`
+      }
+    }
+  })
+
+  // X-axis labels
+  labels.forEach((label, i) => {
+    const x = PAD + i * stepX
+    svg += `<text x="${x}" y="${H + 10}" text-anchor="middle" fill="var(--text-muted)" font-size="8">${esc(label)}</text>`
+  })
+
+  svg += '</svg>'
+  let html = `<div class="widget-chart">${svg}`
+  html += renderChartLegend(datasets)
+  if (showAnalytics) html += renderChartAnalytics(datasets)
+  html += '</div>'
+  return html
+}
+
+function renderScatterChart(datasets, c = {}) {
+  const showTrend = c.trendline === true
+  const showAnalytics = c.analytics === true
+  const W = 300, H = 140, PAD = 24
+
+  const allPts = datasets.flatMap(d => d.data || [])
+  const allX = allPts.map(p => typeof p === 'object' ? p.x : 0)
+  const allY = allPts.map(p => typeof p === 'object' ? p.y : Number(p))
+  const maxX = Math.max(...allX, 1), minX = Math.min(...allX, 0)
+  const maxY = Math.max(...allY, 1), minY = Math.min(...allY, 0)
+  const rangeX = maxX - minX || 1, rangeY = maxY - minY || 1
+
+  const toX = x => PAD + ((x - minX) / rangeX) * (W - PAD * 2)
+  const toY = y => H - PAD - ((y - minY) / rangeY) * (H - PAD * 2)
+
+  let svg = `<svg viewBox="0 0 ${W} ${H + 20}" class="chart-line-svg">`
+
+  // Grid with Y-axis labels
+  for (let i = 0; i <= 4; i++) {
+    const y = PAD + ((H - PAD * 2) * i / 4)
+    const val = maxY - (rangeY * i / 4)
+    svg += `<line x1="${PAD}" y1="${y}" x2="${W - PAD}" y2="${y}" stroke="var(--border)" stroke-width="0.5"/>`
+    svg += `<text x="${PAD - 3}" y="${y + 3}" text-anchor="end" fill="var(--text-muted)" font-size="7">${formatAxisVal(val)}</text>`
+  }
+
+  datasets.forEach((ds, di) => {
+    const color = ds.color || CHART_COLORS[di % CHART_COLORS.length]
+    const pts = (ds.data || []).map(p =>
+      typeof p === 'object' ? { sx: toX(p.x), sy: toY(p.y), rx: p.x, ry: p.y } : null
+    ).filter(Boolean)
+
+    pts.forEach(p => {
+      svg += `<circle cx="${p.sx}" cy="${p.sy}" r="4" fill="${color}" opacity="0.75"><title>${esc(ds.label || '')}: (${p.rx}, ${p.ry})</title></circle>`
+    })
+
+    // Trendline (linear regression over x/y pairs)
+    if (showTrend && pts.length >= 2) {
+      const xVals = (ds.data || []).filter(p => typeof p === 'object').map(p => p.x)
+      const yVals = (ds.data || []).filter(p => typeof p === 'object').map(p => p.y)
+      const n = xVals.length
+      const xMean = xVals.reduce((a, b) => a + b, 0) / n
+      const yMean = yVals.reduce((a, b) => a + b, 0) / n
+      let num = 0, den = 0
+      for (let i = 0; i < n; i++) {
+        num += (xVals[i] - xMean) * (yVals[i] - yMean)
+        den += (xVals[i] - xMean) ** 2
+      }
+      const slope = den === 0 ? 0 : num / den
+      const intercept = yMean - slope * xMean
+      svg += `<line x1="${toX(minX)}" y1="${toY(slope * minX + intercept)}" x2="${toX(maxX)}" y2="${toY(slope * maxX + intercept)}" stroke="${color}" stroke-width="1.5" stroke-dasharray="5,3" opacity="0.7"/>`
+    }
+  })
+
+  // X-axis labels (5 ticks)
+  for (let i = 0; i <= 4; i++) {
+    const xVal = minX + (rangeX * i / 4)
+    svg += `<text x="${toX(xVal)}" y="${H + 10}" text-anchor="middle" fill="var(--text-muted)" font-size="8">${formatAxisVal(xVal)}</text>`
+  }
+
+  svg += '</svg>'
+  let html = `<div class="widget-chart">${svg}`
+  html += renderChartLegend(datasets)
+  if (showAnalytics) html += renderChartAnalytics(datasets)
+  html += '</div>'
+  return html
+}
+
+function renderPieChart(labels, datasets, type) {
+  const data = (datasets[0] && datasets[0].data) || []
+  const colors = data.map((_, i) => (datasets[0].colors && datasets[0].colors[i]) || CHART_COLORS[i % CHART_COLORS.length])
+  const total = data.reduce((a, b) => a + b, 0) || 1
+  const R = 60, CX = 80, CY = 70
+  const innerR = type === 'doughnut' ? R * 0.55 : 0
+
+  let svg = `<svg viewBox="0 0 160 140" class="chart-pie-svg">`
+  let startAngle = -Math.PI / 2
+
+  data.forEach((val, i) => {
+    const sliceAngle = (val / total) * 2 * Math.PI
+    const endAngle = startAngle + sliceAngle
+    const largeArc = sliceAngle > Math.PI ? 1 : 0
+
+    const x1 = CX + R * Math.cos(startAngle)
+    const y1 = CY + R * Math.sin(startAngle)
+    const x2 = CX + R * Math.cos(endAngle)
+    const y2 = CY + R * Math.sin(endAngle)
+
+    if (innerR > 0) {
+      const ix1 = CX + innerR * Math.cos(startAngle)
+      const iy1 = CY + innerR * Math.sin(startAngle)
+      const ix2 = CX + innerR * Math.cos(endAngle)
+      const iy2 = CY + innerR * Math.sin(endAngle)
+      svg += `<path d="M ${x1} ${y1} A ${R} ${R} 0 ${largeArc} 1 ${x2} ${y2} L ${ix2} ${iy2} A ${innerR} ${innerR} 0 ${largeArc} 0 ${ix1} ${iy1} Z" fill="${colors[i]}"><title>${esc(labels[i] || '')}: ${val} (${Math.round(val / total * 100)}%)</title></path>`
+    } else {
+      svg += `<path d="M ${CX} ${CY} L ${x1} ${y1} A ${R} ${R} 0 ${largeArc} 1 ${x2} ${y2} Z" fill="${colors[i]}"><title>${esc(labels[i] || '')}: ${val} (${Math.round(val / total * 100)}%)</title></path>`
+    }
+
+    startAngle = endAngle
+  })
+
+  svg += '</svg>'
+
+  let html = `<div class="widget-chart widget-chart-pie">${svg}<div class="chart-pie-legend">`
+  labels.forEach((label, i) => {
+    const pct = Math.round((data[i] || 0) / total * 100)
+    html += `<div class="chart-legend-item"><div class="chart-legend-dot" style="background:${colors[i]}"></div><span>${esc(label)}</span><span class="chart-pie-pct">${pct}%</span></div>`
+  })
+  html += '</div></div>'
+  return html
+}
+
+function renderChartLegend(datasets) {
+  if (datasets.length <= 1) return ''
+  let html = '<div class="chart-legend">'
+  datasets.forEach((ds, di) => {
+    const color = ds.color || CHART_COLORS[di % CHART_COLORS.length]
+    html += `<div class="chart-legend-item"><div class="chart-legend-dot" style="background:${color}"></div>${esc(ds.label || '')}</div>`
+  })
+  html += '</div>'
+  return html
+}
+
+// ── New Widget Types ───────────────────────────────────
+
+function renderProgressWidget(c) {
+  const bars = c.bars || [{ value: c.value || 0, max: c.max || 100, label: c.label || '' }]
+  return `<div class="widget-progress">${bars.map(bar => {
+    const pct = Math.min(100, Math.max(0, (bar.value / (bar.max || 100)) * 100))
+    const color = bar.color || 'var(--w-accent, var(--amber))'
+    return `<div class="progress-item">
+      ${bar.label ? `<div class="progress-label"><span>${esc(bar.label)}</span><span class="progress-pct">${Math.round(pct)}%</span></div>` : ''}
+      <div class="progress-track"><div class="progress-fill" style="width:${pct}%;background:${color}"></div></div>
+    </div>`
+  }).join('')}</div>`
+}
+
+function renderTableWidget(c) {
+  const headers = c.headers || []
+  const rows = c.rows || []
+  const striped = c.striped !== false
+  let html = `<div class="widget-table-wrap"><table class="widget-table${striped ? ' striped' : ''}">`
+  if (headers.length) {
+    html += '<thead><tr>' + headers.map(h => `<th>${esc(String(h))}</th>`).join('') + '</tr></thead>'
+  }
+  html += '<tbody>'
+  rows.forEach(row => {
+    const cells = Array.isArray(row) ? row : (row.cells || [])
+    html += '<tr>' + cells.map(cell => `<td>${esc(String(cell))}</td>`).join('') + '</tr>'
+  })
+  html += '</tbody></table></div>'
+  return html
+}
+
+function renderImageWidget(c) {
+  const src = c.url || c.src || ''
+  const alt = c.alt || ''
+  const caption = c.caption || ''
+  const fit = c.fit || 'cover'
+  let html = `<div class="widget-image">`
+  if (src) html += `<img src="${esc(src)}" alt="${esc(alt)}" style="object-fit:${esc(fit)}" loading="lazy" onerror="this.style.display='none'" />`
+  if (caption) html += `<div class="widget-image-caption">${esc(caption)}</div>`
+  html += '</div>'
+  return html
+}
+
+function renderCountdownWidget(c) {
+  const target = c.target || ''
+  const label = c.label || ''
+  const id = 'cd-' + Math.random().toString(36).slice(2, 8)
+  return `<div class="widget-countdown" data-target="${esc(target)}" id="${id}">
+    ${label ? `<div class="countdown-label">${esc(label)}</div>` : ''}
+    <div class="countdown-display">
+      <div class="countdown-unit"><span class="countdown-num" data-unit="days">--</span><span class="countdown-txt">days</span></div>
+      <div class="countdown-sep">:</div>
+      <div class="countdown-unit"><span class="countdown-num" data-unit="hours">--</span><span class="countdown-txt">hrs</span></div>
+      <div class="countdown-sep">:</div>
+      <div class="countdown-unit"><span class="countdown-num" data-unit="minutes">--</span><span class="countdown-txt">min</span></div>
+      <div class="countdown-sep">:</div>
+      <div class="countdown-unit"><span class="countdown-num" data-unit="seconds">--</span><span class="countdown-txt">sec</span></div>
+    </div>
+    ${c.expired ? `<div class="countdown-expired">${esc(c.expired)}</div>` : ''}
+  </div>`
+}
+
+let countdownInterval = null
+function startCountdowns() {
+  if (countdownInterval) clearInterval(countdownInterval)
+  function tick() {
+    document.querySelectorAll('.widget-countdown').forEach(el => {
+      const target = new Date(el.dataset.target).getTime()
+      const now = Date.now()
+      const diff = target - now
+      if (diff <= 0) {
+        el.querySelectorAll('.countdown-num').forEach(n => n.textContent = '0')
+        const expired = el.querySelector('.countdown-expired')
+        if (expired) expired.style.display = ''
+        return
+      }
+      const d = Math.floor(diff / 86400000)
+      const h = Math.floor((diff % 86400000) / 3600000)
+      const m = Math.floor((diff % 3600000) / 60000)
+      const s = Math.floor((diff % 60000) / 1000)
+      el.querySelector('[data-unit="days"]').textContent = String(d)
+      el.querySelector('[data-unit="hours"]').textContent = String(h).padStart(2, '0')
+      el.querySelector('[data-unit="minutes"]').textContent = String(m).padStart(2, '0')
+      el.querySelector('[data-unit="seconds"]').textContent = String(s).padStart(2, '0')
+    })
+  }
+  tick()
+  countdownInterval = setInterval(tick, 1000)
+}
+
+function renderKvWidget(c) {
+  const pairs = c.pairs || []
+  return `<div class="widget-kv">${pairs.map(p => {
+    const val = p.link
+      ? `<a href="${esc(p.link)}" target="_blank" rel="noopener">${esc(String(p.value))}</a>`
+      : esc(String(p.value))
+    return `<div class="kv-row">
+      <span class="kv-key">${p.icon ? `<span class="kv-icon">${esc(p.icon)}</span>` : ''}${esc(String(p.key))}</span>
+      <span class="kv-value">${val}</span>
+    </div>`
+  }).join('')}</div>`
+}
+
+function renderEmbedWidget(c) {
+  const src = c.url || ''
+  const height = c.height || 200
+  if (!src) return '<div class="widget-markdown"><p>Embed: no URL</p></div>'
+  return `<iframe class="widget-embed-frame" src="${esc(src)}" style="height:${parseInt(height)}px" sandbox="allow-scripts allow-same-origin" loading="lazy"></iframe>`
 }
 
 // ── News Rendering ──────────────────────────────────────

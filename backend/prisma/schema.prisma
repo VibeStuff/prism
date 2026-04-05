@@ -99,6 +99,10 @@ model AIDashboardWidget {
   colSpan   Int      @default(1)
   rowSpan   Int      @default(1)
   order     Int      @default(0)
+  visible   Boolean  @default(true)
+  style     Json?
+  icon      String?
+  link      String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

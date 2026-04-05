@@ -20,14 +20,32 @@ const newsCreateSchema = z.object({
 
 const newsUpdateSchema = newsCreateSchema.partial()
 
+const widgetStyleSchema = z.object({
+    bgColor: z.string().optional(),
+    headerColor: z.string().optional(),
+    textColor: z.string().optional(),
+    borderColor: z.string().optional(),
+    accentColor: z.string().optional(),
+    bgGradient: z.string().optional(),
+    opacity: z.number().min(0).max(1).optional(),
+    padding: z.string().optional(),
+}).optional().nullable()
+
 const widgetUpsertSchema = z.object({
     slug: z.string().min(1).regex(/^[a-z0-9][a-z0-9-]*$/),
-    type: z.enum(['stat', 'list', 'markdown', 'chart', 'html']),
+    type: z.enum([
+        'stat', 'list', 'markdown', 'chart', 'html',
+        'progress', 'table', 'image', 'countdown', 'kv', 'embed',
+    ]),
     title: z.string().min(1),
     content: z.record(z.unknown()),
     colSpan: z.number().int().min(1).max(12).default(1),
     rowSpan: z.number().int().min(1).max(6).default(1),
     order: z.number().int().default(0),
+    visible: z.boolean().default(true),
+    style: widgetStyleSchema,
+    icon: z.string().optional().nullable(),
+    link: z.string().url().optional().nullable(),
 })
 
 const metaSchema = z.object({
@@ -107,7 +125,12 @@ const AiDashboardModule: AppModule = {
                         await tx.aIDashboardWidget.upsert({
                             where: { slug: w.slug },
                             create: w,
-                            update: { type: w.type, title: w.title, content: w.content, colSpan: w.colSpan, rowSpan: w.rowSpan, order: w.order },
+                            update: {
+                                type: w.type, title: w.title, content: w.content,
+                                colSpan: w.colSpan, rowSpan: w.rowSpan, order: w.order,
+                                visible: w.visible, style: w.style ?? undefined,
+                                icon: w.icon ?? undefined, link: w.link ?? undefined,
+                            },
                         })
                     }
                 }
@@ -202,9 +225,17 @@ const AiDashboardModule: AppModule = {
         )
 
         // ── Widgets: List ───────────────────────────────────────────────────
-        server.get(`${prefix}/api/widgets`, { config: { public: true } } as never, async () => {
-            return services.db.aIDashboardWidget.findMany({ orderBy: [{ order: 'asc' }, { createdAt: 'asc' }] })
-        })
+        server.get<{ Querystring: { all?: string } }>(
+            `${prefix}/api/widgets`,
+            { config: { public: true } } as never,
+            async (req) => {
+                const showAll = req.query.all === 'true'
+                return services.db.aIDashboardWidget.findMany({
+                    where: showAll ? {} : { visible: true },
+                    orderBy: [{ order: 'asc' }, { createdAt: 'asc' }],
+                })
+            },
+        )
 
         // ── Widgets: Upsert ─────────────────────────────────────────────────
         server.post(`${prefix}/api/widgets`, { config: { public: true } } as never, async (req, reply) => {
@@ -221,6 +252,10 @@ const AiDashboardModule: AppModule = {
                     colSpan: parsed.data.colSpan,
                     rowSpan: parsed.data.rowSpan,
                     order: parsed.data.order,
+                    visible: parsed.data.visible,
+                    style: parsed.data.style ?? undefined,
+                    icon: parsed.data.icon ?? undefined,
+                    link: parsed.data.link ?? undefined,
                 },
             })
             broadcast('widgets')
