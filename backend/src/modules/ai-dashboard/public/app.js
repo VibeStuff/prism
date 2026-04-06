@@ -269,6 +269,7 @@ function renderChartWidget(c) {
   const { chartType, labels, datasets } = c
   if (!datasets) return `<div class="widget-markdown"><p>Chart: missing data</p></div>`
   if (chartType === 'scatter') return renderScatterChart(datasets, c)
+  if (chartType === 'candlestick' || chartType === 'ohlc') return renderCandlestickChart(labels || [], datasets, c)
   if (!labels) return `<div class="widget-markdown"><p>Chart: missing labels</p></div>`
   if (chartType === 'bar') return renderBarChart(labels, datasets, c)
   if (chartType === 'line' || chartType === 'area') return renderLineChart(labels, datasets, c)
@@ -521,6 +522,113 @@ function renderChartLegend(datasets) {
   })
   html += '</div>'
   return html
+}
+
+function renderCandlestickChart(labels, datasets, c = {}) {
+  const showAnalytics = c.analytics === true
+  const isOhlc = c.chartType === 'ohlc'
+  const ds = datasets[0] || {}
+  const data = ds.data || []
+  if (!data.length) return `<div class="widget-markdown"><p>Chart: no data</p></div>`
+
+  const hasVolume = c.volume === true && data.some(d => d.volume != null)
+  const W = 300, PAD = 24
+  const H = hasVolume ? 110 : 140
+  const VOL_H = hasVolume ? 28 : 0
+  const TOTAL_H = H + VOL_H
+
+  const allVals = data.flatMap(d => [d.open, d.high, d.low, d.close].filter(v => v != null))
+  const maxVal = Math.max(...allVals)
+  const minVal = Math.min(...allVals)
+  const range = maxVal - minVal || 1
+
+  const toY = v => H - PAD - ((v - minVal) / range) * (H - PAD * 2)
+
+  const n = data.length
+  const slotW = (W - PAD * 2) / Math.max(n, 1)
+  const bodyW = Math.max(2, Math.min(slotW * 0.65, 14))
+
+  let svg = `<svg viewBox="0 0 ${W} ${TOTAL_H + 20}" class="chart-line-svg">`
+
+  // Grid lines with Y-axis labels
+  for (let i = 0; i <= 4; i++) {
+    const y = PAD + ((H - PAD * 2) * i / 4)
+    const val = maxVal - (range * i / 4)
+    svg += `<line x1="${PAD}" y1="${y}" x2="${W - PAD}" y2="${y}" stroke="var(--border)" stroke-width="0.5"/>`
+    svg += `<text x="${PAD - 3}" y="${y + 3}" text-anchor="end" fill="var(--text-muted)" font-size="7">${formatAxisVal(val)}</text>`
+  }
+
+  // Volume bars (optional, below the candle area)
+  if (hasVolume) {
+    const volVals = data.map(d => d.volume || 0)
+    const maxVol = Math.max(...volVals, 1)
+    const volTop = H + 4
+    data.forEach((candle, i) => {
+      const cx = PAD + (i + 0.5) * slotW
+      const vol = candle.volume || 0
+      const volBarH = Math.max(1, (vol / maxVol) * (VOL_H - 6))
+      const isUp = candle.close >= candle.open
+      svg += `<rect x="${cx - bodyW / 2}" y="${volTop + (VOL_H - 6) - volBarH}" width="${bodyW}" height="${volBarH}" fill="${isUp ? '#5a8a4a' : '#a84040'}" opacity="0.45"/>`
+    })
+    svg += `<text x="${PAD - 3}" y="${volTop + (VOL_H - 6) / 2 + 3}" text-anchor="end" fill="var(--text-muted)" font-size="6">vol</text>`
+  }
+
+  // Draw candles / OHLC bars
+  data.forEach((candle, i) => {
+    const { open, high, low, close } = candle
+    if (open == null || high == null || low == null || close == null) return
+    const cx = PAD + (i + 0.5) * slotW
+    const isUp = close >= open
+    const color = isUp ? '#5a8a4a' : '#a84040'
+    const wickTop = toY(high)
+    const wickBot = toY(low)
+
+    if (isOhlc) {
+      // OHLC style: vertical line + open tick left + close tick right
+      svg += `<line x1="${cx}" y1="${wickTop}" x2="${cx}" y2="${wickBot}" stroke="${color}" stroke-width="1.5"><title>${esc(labels[i] || String(i + 1))}: O${open} H${high} L${low} C${close}</title></line>`
+      svg += `<line x1="${cx - bodyW / 2}" y1="${toY(open)}" x2="${cx}" y2="${toY(open)}" stroke="${color}" stroke-width="1.5"/>`
+      svg += `<line x1="${cx}" y1="${toY(close)}" x2="${cx + bodyW / 2}" y2="${toY(close)}" stroke="${color}" stroke-width="1.5"/>`
+    } else {
+      // Candlestick style: wick + filled body
+      svg += `<line x1="${cx}" y1="${wickTop}" x2="${cx}" y2="${wickBot}" stroke="${color}" stroke-width="1.2"/>`
+      const bodyTop = toY(Math.max(open, close))
+      const bodyBot = toY(Math.min(open, close))
+      const bodyH = Math.max(1, bodyBot - bodyTop)
+      svg += `<rect x="${cx - bodyW / 2}" y="${bodyTop}" width="${bodyW}" height="${bodyH}" fill="${color}" rx="0.5"><title>${esc(labels[i] || String(i + 1))}: O${open} H${high} L${low} C${close}</title></rect>`
+    }
+  })
+
+  // X-axis labels
+  labels.forEach((label, i) => {
+    const x = PAD + (i + 0.5) * slotW
+    svg += `<text x="${x}" y="${TOTAL_H + 10}" text-anchor="middle" fill="var(--text-muted)" font-size="8">${esc(String(label))}</text>`
+  })
+
+  svg += '</svg>'
+  let html = `<div class="widget-chart">${svg}`
+  if (showAnalytics) html += renderCandlestickAnalytics(data)
+  html += '</div>'
+  return html
+}
+
+function renderCandlestickAnalytics(data) {
+  if (!data.length) return ''
+  const highs = data.map(d => d.high).filter(v => v != null)
+  const lows = data.map(d => d.low).filter(v => v != null)
+  const first = data[0]
+  const last = data[data.length - 1]
+  const change = (first?.open != null && last?.close != null) ? last.close - first.open : null
+  const changePct = (change != null && first?.open) ? (change / first.open * 100) : null
+  const high = highs.length ? Math.max(...highs) : null
+  const low = lows.length ? Math.min(...lows) : null
+  const changeColor = change == null ? 'inherit' : change >= 0 ? '#5a8a4a' : '#a84040'
+  const changeLabel = changePct != null ? `${change >= 0 ? '+' : ''}${changePct.toFixed(2)}%` : '--'
+  return `<div class="chart-analytics">
+    <div class="chart-analytics-item"><span class="chart-analytics-label">High</span><span class="chart-analytics-val">${high != null ? formatAxisVal(high) : '--'}</span></div>
+    <div class="chart-analytics-item"><span class="chart-analytics-label">Low</span><span class="chart-analytics-val">${low != null ? formatAxisVal(low) : '--'}</span></div>
+    <div class="chart-analytics-item"><span class="chart-analytics-label">Close</span><span class="chart-analytics-val">${last?.close != null ? formatAxisVal(last.close) : '--'}</span></div>
+    <div class="chart-analytics-item"><span class="chart-analytics-label">Chg</span><span class="chart-analytics-val" style="color:${changeColor}">${changeLabel}</span></div>
+  </div>`
 }
 
 // ── New Widget Types ───────────────────────────────────
