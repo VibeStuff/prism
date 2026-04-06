@@ -123,6 +123,65 @@ body {
 }
 
 /* ═══════════════════════════════════════════════════════
+   TAB BAR
+═══════════════════════════════════════════════════════ */
+.tab-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.tab-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  background: var(--cream-80);
+  color: var(--text-mid);
+  font-family: 'Inter', sans-serif;
+  font-size: 0.8rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background var(--t) var(--ease), border-color var(--t) var(--ease), color var(--t) var(--ease);
+  white-space: nowrap;
+}
+
+.tab-btn:hover {
+  border-color: var(--border-hover);
+  background: var(--amber-light);
+  color: var(--text-dark);
+}
+
+.tab-btn.active {
+  background: var(--amber-light);
+  border-color: var(--amber);
+  color: var(--amber);
+}
+
+.tab-open {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+  color: inherit;
+  opacity: 0.5;
+  font-size: 0.75rem;
+  text-decoration: none;
+  transition: opacity var(--t) var(--ease), background var(--t) var(--ease);
+  flex-shrink: 0;
+}
+
+.tab-open:hover {
+  opacity: 1;
+  background: var(--amber-glow);
+}
+
+/* ═══════════════════════════════════════════════════════
    WIDGET GRID
 ═══════════════════════════════════════════════════════ */
 .widget-grid {

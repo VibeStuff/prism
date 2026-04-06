@@ -56,12 +56,22 @@ const metaSchema = z.object({
 })
 
 const bulkPushSchema = z.object({
+    tab: z.string().optional(),
     news: z.array(newsCreateSchema).optional(),
     widgets: z.array(widgetUpsertSchema).optional(),
     meta: metaSchema.optional(),
     clearNews: z.boolean().default(false),
     clearWidgets: z.boolean().default(false),
 })
+
+const tabCreateSchema = z.object({
+    slug: z.string().min(1).regex(/^[a-z0-9][a-z0-9-]*$/),
+    name: z.string().min(1),
+    isDefault: z.boolean().default(false),
+    order: z.number().int().default(0),
+})
+
+const tabUpdateSchema = tabCreateSchema.omit({ slug: true }).partial()
 
 // ─── Module ─────────────────────────────────────────────────────────────────
 
@@ -89,8 +99,17 @@ const AiDashboardModule: AppModule = {
         }
 
         // ── Broadcast helper ────────────────────────────────────────────────
-        function broadcast(type: 'news' | 'widgets' | 'meta' | 'full') {
-            services.io?.to('ai-dashboard:viewers').emit('ai-dashboard:update', { type })
+        function broadcast(type: 'news' | 'widgets' | 'meta' | 'full' | 'tabs', tabSlug?: string) {
+            services.io?.to('ai-dashboard:viewers').emit('ai-dashboard:update', { type, tab: tabSlug })
+        }
+
+        // ── Tab resolver ────────────────────────────────────────────────────
+        async function resolveTab(slug?: string) {
+            if (slug) {
+                return services.db.aIDashboardTab.findUnique({ where: { slug } })
+            }
+            const defaultTab = await services.db.aIDashboardTab.findFirst({ where: { isDefault: true } })
+            return defaultTab ?? services.db.aIDashboardTab.findFirst({ orderBy: [{ order: 'asc' }, { createdAt: 'asc' }] })
         }
 
         // ── Page ────────────────────────────────────────────────────────────
@@ -100,21 +119,122 @@ const AiDashboardModule: AppModule = {
             reply.type('text/html').send(html)
         })
 
+        // ── Tabs: List ──────────────────────────────────────────────────────
+        server.get(`${prefix}/api/tabs`, { config: { public: true } } as never, async () => {
+            return services.db.aIDashboardTab.findMany({
+                orderBy: [{ order: 'asc' }, { createdAt: 'asc' }],
+            })
+        })
+
+        // ── Tabs: Create ────────────────────────────────────────────────────
+        server.post(`${prefix}/api/tabs`, { config: { public: true } } as never, async (req, reply) => {
+            if (!requireToken(req, reply)) return
+            const parsed = tabCreateSchema.safeParse(req.body)
+            if (!parsed.success) return reply.code(400).send({ error: 'Validation failed', details: parsed.error.flatten() })
+
+            const existing = await services.db.aIDashboardTab.findUnique({ where: { slug: parsed.data.slug } })
+            if (existing) return reply.code(409).send({ error: 'Tab slug already exists' })
+
+            const tab = await services.db.$transaction(async (tx) => {
+                if (parsed.data.isDefault) {
+                    await tx.aIDashboardTab.updateMany({ data: { isDefault: false } })
+                }
+                return tx.aIDashboardTab.create({ data: parsed.data })
+            })
+
+            broadcast('tabs')
+            return tab
+        })
+
+        // ── Tabs: Update ────────────────────────────────────────────────────
+        server.put<{ Params: { slug: string } }>(
+            `${prefix}/api/tabs/:slug`,
+            { config: { public: true } } as never,
+            async (req, reply) => {
+                if (!requireToken(req, reply)) return
+                const parsed = tabUpdateSchema.safeParse(req.body)
+                if (!parsed.success) return reply.code(400).send({ error: 'Validation failed', details: parsed.error.flatten() })
+
+                const existing = await services.db.aIDashboardTab.findUnique({ where: { slug: req.params.slug } })
+                if (!existing) return reply.code(404).send({ error: 'Tab not found' })
+
+                const tab = await services.db.$transaction(async (tx) => {
+                    if (parsed.data.isDefault) {
+                        await tx.aIDashboardTab.updateMany({ data: { isDefault: false } })
+                    }
+                    return tx.aIDashboardTab.update({ where: { slug: req.params.slug }, data: parsed.data })
+                })
+
+                broadcast('tabs')
+                return tab
+            },
+        )
+
+        // ── Tabs: Set Default ───────────────────────────────────────────────
+        server.post<{ Params: { slug: string } }>(
+            `${prefix}/api/tabs/:slug/default`,
+            { config: { public: true } } as never,
+            async (req, reply) => {
+                if (!requireToken(req, reply)) return
+                const existing = await services.db.aIDashboardTab.findUnique({ where: { slug: req.params.slug } })
+                if (!existing) return reply.code(404).send({ error: 'Tab not found' })
+
+                await services.db.$transaction(async (tx) => {
+                    await tx.aIDashboardTab.updateMany({ data: { isDefault: false } })
+                    await tx.aIDashboardTab.update({ where: { slug: req.params.slug }, data: { isDefault: true } })
+                })
+
+                broadcast('tabs')
+                return { success: true }
+            },
+        )
+
+        // ── Tabs: Delete ────────────────────────────────────────────────────
+        server.delete<{ Params: { slug: string } }>(
+            `${prefix}/api/tabs/:slug`,
+            { config: { public: true } } as never,
+            async (req, reply) => {
+                if (!requireToken(req, reply)) return
+                const existing = await services.db.aIDashboardTab.findUnique({ where: { slug: req.params.slug } })
+                if (!existing) return reply.code(404).send({ error: 'Tab not found' })
+
+                // Prevent deleting the last tab
+                const tabCount = await services.db.aIDashboardTab.count()
+                if (tabCount <= 1) return reply.code(400).send({ error: 'Cannot delete the last tab' })
+
+                await services.db.aIDashboardTab.delete({ where: { slug: req.params.slug } })
+                // All related widgets/news/meta are cascade-deleted
+
+                // If we deleted the default, promote the first remaining tab
+                if (existing.isDefault) {
+                    const first = await services.db.aIDashboardTab.findFirst({ orderBy: [{ order: 'asc' }, { createdAt: 'asc' }] })
+                    if (first) await services.db.aIDashboardTab.update({ where: { id: first.id }, data: { isDefault: true } })
+                }
+
+                broadcast('tabs')
+                return { success: true }
+            },
+        )
+
         // ── Bulk Push ───────────────────────────────────────────────────────
         server.post(`${prefix}/api/push`, { config: { public: true } } as never, async (req, reply) => {
             if (!requireToken(req, reply)) return
             const parsed = bulkPushSchema.safeParse(req.body)
             if (!parsed.success) return reply.code(400).send({ error: 'Validation failed', details: parsed.error.flatten() })
-            const { news, widgets, meta, clearNews, clearWidgets } = parsed.data
+            const { tab: tabSlug, news, widgets, meta, clearNews, clearWidgets } = parsed.data
+
+            const tab = await resolveTab(tabSlug)
+            if (!tab) return reply.code(404).send({ error: tabSlug ? `Tab '${tabSlug}' not found` : 'No tabs exist yet' })
 
             await services.db.$transaction(async (tx) => {
-                if (clearNews) await tx.aIDashboardNewsItem.deleteMany()
-                if (clearWidgets) await tx.aIDashboardWidget.deleteMany()
+                if (clearNews) await tx.aIDashboardNewsItem.deleteMany({ where: { tabId: tab.id } })
+                if (clearWidgets) await tx.aIDashboardWidget.deleteMany({ where: { tabId: tab.id } })
 
                 if (news?.length) {
                     await tx.aIDashboardNewsItem.createMany({
                         data: news.map(n => ({
                             ...n,
+                            tabId: tab.id,
                             expiresAt: n.expiresAt ? new Date(n.expiresAt) : null,
                         })),
                     })
@@ -123,8 +243,8 @@ const AiDashboardModule: AppModule = {
                 if (widgets?.length) {
                     for (const w of widgets) {
                         await tx.aIDashboardWidget.upsert({
-                            where: { slug: w.slug },
-                            create: w,
+                            where: { slug_tabId: { slug: w.slug, tabId: tab.id } },
+                            create: { ...w, tabId: tab.id },
                             update: {
                                 type: w.type, title: w.title, content: w.content,
                                 colSpan: w.colSpan, rowSpan: w.rowSpan, order: w.order,
@@ -136,27 +256,30 @@ const AiDashboardModule: AppModule = {
                 }
 
                 if (meta) {
-                    const existing = await tx.aIDashboardMeta.findFirst()
-                    if (existing) {
-                        await tx.aIDashboardMeta.update({ where: { id: existing.id }, data: meta })
-                    } else {
-                        await tx.aIDashboardMeta.create({ data: meta })
-                    }
+                    await tx.aIDashboardMeta.upsert({
+                        where: { tabId: tab.id },
+                        create: { ...meta, tabId: tab.id },
+                        update: meta,
+                    })
                 }
             })
 
-            broadcast('full')
-            return { success: true }
+            broadcast('full', tab.slug)
+            return { success: true, tab: tab.slug }
         })
 
         // ── News: List ──────────────────────────────────────────────────────
-        server.get<{ Querystring: { limit?: string; offset?: string; category?: string } }>(
+        server.get<{ Querystring: { limit?: string; offset?: string; category?: string; tab?: string } }>(
             `${prefix}/api/news`,
             { config: { public: true } } as never,
-            async (req) => {
+            async (req, reply) => {
+                const tab = await resolveTab(req.query.tab)
+                if (!tab) return reply.code(404).send({ error: 'Tab not found' })
+
                 const limit = Math.min(parseInt(req.query.limit ?? '50', 10) || 50, 200)
                 const offset = parseInt(req.query.offset ?? '0', 10) || 0
                 const where: Record<string, unknown> = {
+                    tabId: tab.id,
                     OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }],
                 }
                 if (req.query.category) where.category = req.query.category
@@ -175,16 +298,28 @@ const AiDashboardModule: AppModule = {
         )
 
         // ── News: Create ────────────────────────────────────────────────────
-        server.post(`${prefix}/api/news`, { config: { public: true } } as never, async (req, reply) => {
-            if (!requireToken(req, reply)) return
-            const parsed = newsCreateSchema.safeParse(req.body)
-            if (!parsed.success) return reply.code(400).send({ error: 'Validation failed', details: parsed.error.flatten() })
-            const item = await services.db.aIDashboardNewsItem.create({
-                data: { ...parsed.data, expiresAt: parsed.data.expiresAt ? new Date(parsed.data.expiresAt) : null },
-            })
-            broadcast('news')
-            return item
-        })
+        server.post<{ Querystring: { tab?: string } }>(
+            `${prefix}/api/news`,
+            { config: { public: true } } as never,
+            async (req, reply) => {
+                if (!requireToken(req, reply)) return
+                const parsed = newsCreateSchema.safeParse(req.body)
+                if (!parsed.success) return reply.code(400).send({ error: 'Validation failed', details: parsed.error.flatten() })
+
+                const tab = await resolveTab(req.query.tab)
+                if (!tab) return reply.code(404).send({ error: 'Tab not found' })
+
+                const item = await services.db.aIDashboardNewsItem.create({
+                    data: {
+                        ...parsed.data,
+                        tabId: tab.id,
+                        expiresAt: parsed.data.expiresAt ? new Date(parsed.data.expiresAt) : null,
+                    },
+                })
+                broadcast('news', tab.slug)
+                return item
+            },
+        )
 
         // ── News: Update ────────────────────────────────────────────────────
         server.put<{ Params: { id: string } }>(
@@ -200,7 +335,7 @@ const AiDashboardModule: AppModule = {
                         data.expiresAt = parsed.data.expiresAt ? new Date(parsed.data.expiresAt) : null
                     }
                     const item = await services.db.aIDashboardNewsItem.update({ where: { id: req.params.id }, data })
-                    broadcast('news')
+                    broadcast('news', item.tabId)
                     return item
                 } catch {
                     return reply.code(404).send({ error: 'News item not found' })
@@ -215,8 +350,8 @@ const AiDashboardModule: AppModule = {
             async (req, reply) => {
                 if (!requireToken(req, reply)) return
                 try {
-                    await services.db.aIDashboardNewsItem.delete({ where: { id: req.params.id } })
-                    broadcast('news')
+                    const item = await services.db.aIDashboardNewsItem.delete({ where: { id: req.params.id } })
+                    broadcast('news', item.tabId)
                     return { success: true }
                 } catch {
                     return reply.code(404).send({ error: 'News item not found' })
@@ -225,42 +360,53 @@ const AiDashboardModule: AppModule = {
         )
 
         // ── Widgets: List ───────────────────────────────────────────────────
-        server.get<{ Querystring: { all?: string } }>(
+        server.get<{ Querystring: { all?: string; tab?: string } }>(
             `${prefix}/api/widgets`,
             { config: { public: true } } as never,
-            async (req) => {
+            async (req, reply) => {
+                const tab = await resolveTab(req.query.tab)
+                if (!tab) return reply.code(404).send({ error: 'Tab not found' })
+
                 const showAll = req.query.all === 'true'
                 return services.db.aIDashboardWidget.findMany({
-                    where: showAll ? {} : { visible: true },
+                    where: showAll ? { tabId: tab.id } : { tabId: tab.id, visible: true },
                     orderBy: [{ order: 'asc' }, { createdAt: 'asc' }],
                 })
             },
         )
 
         // ── Widgets: Upsert ─────────────────────────────────────────────────
-        server.post(`${prefix}/api/widgets`, { config: { public: true } } as never, async (req, reply) => {
-            if (!requireToken(req, reply)) return
-            const parsed = widgetUpsertSchema.safeParse(req.body)
-            if (!parsed.success) return reply.code(400).send({ error: 'Validation failed', details: parsed.error.flatten() })
-            const widget = await services.db.aIDashboardWidget.upsert({
-                where: { slug: parsed.data.slug },
-                create: parsed.data,
-                update: {
-                    type: parsed.data.type,
-                    title: parsed.data.title,
-                    content: parsed.data.content,
-                    colSpan: parsed.data.colSpan,
-                    rowSpan: parsed.data.rowSpan,
-                    order: parsed.data.order,
-                    visible: parsed.data.visible,
-                    style: parsed.data.style ?? undefined,
-                    icon: parsed.data.icon ?? undefined,
-                    link: parsed.data.link ?? undefined,
-                },
-            })
-            broadcast('widgets')
-            return widget
-        })
+        server.post<{ Querystring: { tab?: string } }>(
+            `${prefix}/api/widgets`,
+            { config: { public: true } } as never,
+            async (req, reply) => {
+                if (!requireToken(req, reply)) return
+                const parsed = widgetUpsertSchema.safeParse(req.body)
+                if (!parsed.success) return reply.code(400).send({ error: 'Validation failed', details: parsed.error.flatten() })
+
+                const tab = await resolveTab(req.query.tab)
+                if (!tab) return reply.code(404).send({ error: 'Tab not found' })
+
+                const widget = await services.db.aIDashboardWidget.upsert({
+                    where: { slug_tabId: { slug: parsed.data.slug, tabId: tab.id } },
+                    create: { ...parsed.data, tabId: tab.id },
+                    update: {
+                        type: parsed.data.type,
+                        title: parsed.data.title,
+                        content: parsed.data.content,
+                        colSpan: parsed.data.colSpan,
+                        rowSpan: parsed.data.rowSpan,
+                        order: parsed.data.order,
+                        visible: parsed.data.visible,
+                        style: parsed.data.style ?? undefined,
+                        icon: parsed.data.icon ?? undefined,
+                        link: parsed.data.link ?? undefined,
+                    },
+                })
+                broadcast('widgets', tab.slug)
+                return widget
+            },
+        )
 
         // ── Widgets: Delete ─────────────────────────────────────────────────
         server.delete<{ Params: { id: string } }>(
@@ -269,8 +415,8 @@ const AiDashboardModule: AppModule = {
             async (req, reply) => {
                 if (!requireToken(req, reply)) return
                 try {
-                    await services.db.aIDashboardWidget.delete({ where: { id: req.params.id } })
-                    broadcast('widgets')
+                    const widget = await services.db.aIDashboardWidget.delete({ where: { id: req.params.id } })
+                    broadcast('widgets', widget.tabId)
                     return { success: true }
                 } catch {
                     return reply.code(404).send({ error: 'Widget not found' })
@@ -279,26 +425,39 @@ const AiDashboardModule: AppModule = {
         )
 
         // ── Meta: Get ───────────────────────────────────────────────────────
-        server.get(`${prefix}/api/meta`, { config: { public: true } } as never, async () => {
-            const meta = await services.db.aIDashboardMeta.findFirst()
-            return meta ?? { title: 'AI Dashboard', subtitle: null, theme: null, layoutCols: 4 }
-        })
+        server.get<{ Querystring: { tab?: string } }>(
+            `${prefix}/api/meta`,
+            { config: { public: true } } as never,
+            async (req, reply) => {
+                const tab = await resolveTab(req.query.tab)
+                if (!tab) return { title: 'AI Dashboard', subtitle: null, theme: null, layoutCols: 4 }
+
+                const meta = await services.db.aIDashboardMeta.findUnique({ where: { tabId: tab.id } })
+                return meta ?? { title: tab.name, subtitle: null, theme: null, layoutCols: 4 }
+            },
+        )
 
         // ── Meta: Upsert ────────────────────────────────────────────────────
-        server.put(`${prefix}/api/meta`, { config: { public: true } } as never, async (req, reply) => {
-            if (!requireToken(req, reply)) return
-            const parsed = metaSchema.safeParse(req.body)
-            if (!parsed.success) return reply.code(400).send({ error: 'Validation failed', details: parsed.error.flatten() })
-            const existing = await services.db.aIDashboardMeta.findFirst()
-            let meta
-            if (existing) {
-                meta = await services.db.aIDashboardMeta.update({ where: { id: existing.id }, data: parsed.data })
-            } else {
-                meta = await services.db.aIDashboardMeta.create({ data: parsed.data })
-            }
-            broadcast('meta')
-            return meta
-        })
+        server.put<{ Querystring: { tab?: string } }>(
+            `${prefix}/api/meta`,
+            { config: { public: true } } as never,
+            async (req, reply) => {
+                if (!requireToken(req, reply)) return
+                const parsed = metaSchema.safeParse(req.body)
+                if (!parsed.success) return reply.code(400).send({ error: 'Validation failed', details: parsed.error.flatten() })
+
+                const tab = await resolveTab(req.query.tab)
+                if (!tab) return reply.code(404).send({ error: 'Tab not found' })
+
+                const meta = await services.db.aIDashboardMeta.upsert({
+                    where: { tabId: tab.id },
+                    create: { ...parsed.data, tabId: tab.id },
+                    update: parsed.data,
+                })
+                broadcast('meta', tab.slug)
+                return meta
+            },
+        )
 
         server.log.info(`[AiDashboardModule] Registered at ${prefix}`)
     },

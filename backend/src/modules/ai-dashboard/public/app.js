@@ -49,6 +49,7 @@ function timeAgo(dateStr) {
 // ── State ───────────────────────────────────────────────
 
 let activeCategory = null
+let activeTab = null   // slug of the currently-viewed tab (null = server default)
 const CHART_COLORS = ['#b8831a', '#4a6fa8', '#5a8a4a', '#a84040', '#8a5ab8', '#4a8a8a', '#b85a1a', '#1a8ab8']
 
 // ── Chart Math Helpers ──────────────────────────────────
@@ -89,11 +90,53 @@ function renderChartAnalytics(datasets) {
   </div>`
 }
 
+// ── Tab helpers ─────────────────────────────────────────
+
+function tabParam() {
+  return activeTab ? `?tab=${encodeURIComponent(activeTab)}` : ''
+}
+
+async function loadTabs() {
+  try {
+    const tabs = await apiFetch('GET', '/api/tabs')
+    renderTabBar(tabs)
+  } catch (err) {
+    console.error('Failed to load tabs:', err)
+  }
+}
+
+function renderTabBar(tabs) {
+  const bar = document.getElementById('tab-bar')
+  if (tabs.length <= 1) {
+    bar.style.display = 'none'
+    return
+  }
+  bar.style.display = ''
+  bar.innerHTML = tabs.map(tab => {
+    const isActive = activeTab === tab.slug || (!activeTab && tab.isDefault)
+    const openUrl = `?tab=${encodeURIComponent(tab.slug)}`
+    return `<button class="tab-btn${isActive ? ' active' : ''}" onclick="switchTab('${esc(tab.slug)}')">${esc(tab.name)}<a class="tab-open" href="${esc(openUrl)}" target="_blank" rel="noopener" title="Open in new screen" onclick="event.stopPropagation()">&#8599;</a></button>`
+  }).join('')
+}
+
+window.switchTab = function (slug) {
+  activeTab = slug
+  activeCategory = null
+  const url = new URL(window.location.href)
+  url.searchParams.set('tab', slug)
+  history.pushState({}, '', url)
+  loadTabData()
+}
+
+async function loadTabData() {
+  await Promise.all([loadMeta(), loadWidgets(), loadNews()])
+}
+
 // ── Data Loading ────────────────────────────────────────
 
 async function loadMeta() {
   try {
-    const meta = await apiFetch('GET', '/api/meta')
+    const meta = await apiFetch('GET', `/api/meta${tabParam()}`)
     document.getElementById('dispatch-title').textContent = meta.title || 'Dispatch'
     document.getElementById('dispatch-subtitle').textContent = meta.subtitle || ''
     document.title = (meta.title || 'Dispatch') + ' \u2014 Prism'
@@ -107,7 +150,7 @@ async function loadMeta() {
 
 async function loadWidgets() {
   try {
-    const widgets = await apiFetch('GET', '/api/widgets')
+    const widgets = await apiFetch('GET', `/api/widgets${tabParam()}`)
     renderWidgets(widgets)
   } catch (err) {
     console.error('Failed to load widgets:', err)
@@ -117,8 +160,9 @@ async function loadWidgets() {
 async function loadNews() {
   try {
     const params = new URLSearchParams({ limit: '50' })
+    if (activeTab) params.set('tab', activeTab)
     if (activeCategory) params.set('category', activeCategory)
-    const { items, total } = await apiFetch('GET', `/api/news?${params}`)
+    const { items } = await apiFetch('GET', `/api/news?${params}`)
     renderNews(items)
     renderNewsFilters(items)
   } catch (err) {
@@ -684,7 +728,16 @@ function initSocket() {
     setStatus('disconnected', 'Disconnected')
   })
 
-  socket.on('ai-dashboard:update', ({ type }) => {
+  socket.on('ai-dashboard:update', ({ type, tab }) => {
+    // Tab structure changed — always reload the tab bar
+    if (type === 'tabs') {
+      loadTabs()
+      return
+    }
+    // Content update — only reload if it's for our current tab (or broadcast to all)
+    const currentSlug = activeTab  // null means "server default"
+    if (tab && currentSlug && tab !== currentSlug) return
+
     if (type === 'full' || type === 'widgets') loadWidgets()
     if (type === 'full' || type === 'news') {
       activeCategory = null
@@ -705,7 +758,12 @@ function setStatus(state, text) {
 // ── Init ────────────────────────────────────────────────
 
 async function init() {
-  await Promise.all([loadMeta(), loadWidgets(), loadNews()])
+  // Read active tab from URL
+  const params = new URLSearchParams(window.location.search)
+  const tabFromUrl = params.get('tab')
+  if (tabFromUrl) activeTab = tabFromUrl
+
+  await Promise.all([loadTabs(), loadMeta(), loadWidgets(), loadNews()])
   initSocket()
 }
 
