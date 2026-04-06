@@ -72,50 +72,73 @@ model DashboardSetting {
 
 // ─── AI Dashboard Module ─────────────────────────────────────────────────────
 
+model AIDashboardTab {
+  id        String   @id @default(cuid())
+  slug      String   @unique
+  name      String
+  isDefault Boolean  @default(false)
+  order     Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  widgets   AIDashboardWidget[]
+  newsItems AIDashboardNewsItem[]
+  meta      AIDashboardMeta?
+
+  @@map("dispatch_tabs")
+}
+
 model AIDashboardNewsItem {
-  id         String    @id @default(cuid())
+  id         String         @id @default(cuid())
+  tabId      String
+  tab        AIDashboardTab @relation(fields: [tabId], references: [id], onDelete: Cascade)
   title      String
   body       String
-  bodyFormat String    @default("markdown")
+  bodyFormat String         @default("markdown")
   category   String?
-  priority   Int       @default(0)
+  priority   Int            @default(0)
   imageUrl   String?
   linkUrl    String?
-  pinned     Boolean   @default(false)
+  pinned     Boolean        @default(false)
   expiresAt  DateTime?
-  createdAt  DateTime  @default(now())
-  updatedAt  DateTime  @updatedAt
+  createdAt  DateTime       @default(now())
+  updatedAt  DateTime       @updatedAt
 
-  @@index([pinned, priority, createdAt])
+  @@index([tabId, pinned, priority, createdAt])
   @@map("dispatch_news_items")
 }
 
 model AIDashboardWidget {
-  id        String   @id @default(cuid())
-  slug      String   @unique
+  id        String         @id @default(cuid())
+  tabId     String
+  tab       AIDashboardTab @relation(fields: [tabId], references: [id], onDelete: Cascade)
+  slug      String
   type      String
   title     String
   content   Json
-  colSpan   Int      @default(1)
-  rowSpan   Int      @default(1)
-  order     Int      @default(0)
-  visible   Boolean  @default(true)
+  colSpan   Int            @default(1)
+  rowSpan   Int            @default(1)
+  order     Int            @default(0)
+  visible   Boolean        @default(true)
   style     Json?
   icon      String?
   link      String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
 
+  @@unique([slug, tabId], name: "slug_tabId")
   @@map("dispatch_widgets")
 }
 
 model AIDashboardMeta {
-  id         String   @id @default(cuid())
-  title      String   @default("AI Dashboard")
+  id         String         @id @default(cuid())
+  tabId      String         @unique
+  tab        AIDashboardTab @relation(fields: [tabId], references: [id], onDelete: Cascade)
+  title      String         @default("AI Dashboard")
   subtitle   String?
   theme      Json?
-  layoutCols Int      @default(4)
-  updatedAt  DateTime @updatedAt
+  layoutCols Int            @default(4)
+  updatedAt  DateTime       @updatedAt
 
   @@map("dispatch_meta")
 }
