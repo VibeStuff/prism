@@ -13,7 +13,7 @@ A dashboard with zero hardcoded content. Every widget, news box, title, and layo
 
 ---
 
-You have access to the Prism AI Dashboard API. This dashboard displays widgets (stat cards, lists, markdown, charts, tables, progress bars, countdowns, key-value pairs, images, embeds, and raw HTML) and news boxes. You control **all** content — nothing is hardcoded. Every visual element is created, updated, or removed by your API calls. The dashboard auto-updates in real time via WebSocket when you push changes.
+You have access to the Prism AI Dashboard API. This dashboard displays widgets (stat cards, lists, markdown, charts including candlestick/OHLC stock charts, tables, progress bars, countdowns, key-value pairs, images, embeds, and raw HTML) and news boxes. You control **all** content — nothing is hardcoded. Every visual element is created, updated, or removed by your API calls. The dashboard auto-updates in real time via WebSocket when you push changes.
 
 ### Authentication
 
@@ -177,7 +177,7 @@ All endpoints are under `/ai-dashboard`. Example: `http://localhost:3000/ai-dash
 |-------|------|----------|-------------|
 | `html` | string | **yes** | Raw HTML rendered in a sandboxed iframe. |
 
-#### `chart` — Bar, line, area, scatter, pie, or doughnut chart
+#### `chart` — Bar, line, area, scatter, pie, doughnut, or candlestick chart
 
 ```json
 {
@@ -199,20 +199,52 @@ All endpoints are under `/ai-dashboard`. Example: `http://localhost:3000/ai-dash
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `chartType` | `"bar"` / `"line"` / `"area"` / `"scatter"` / `"pie"` / `"doughnut"` | **yes** | Chart type. |
-| `labels` | string[] | **yes*** | X-axis labels (or slice labels for pie/doughnut). *Not required for `scatter`. |
+| `chartType` | `"bar"` / `"line"` / `"area"` / `"scatter"` / `"pie"` / `"doughnut"` / `"candlestick"` / `"ohlc"` | **yes** | Chart type. |
+| `labels` | string[] | **yes*** | X-axis labels (or slice labels for pie/doughnut). *Not required for `scatter`. Optional for `candlestick`/`ohlc`. |
 | `datasets` | array | **yes** | Data series. |
 | `datasets[].label` | string | **yes** | Legend label. |
-| `datasets[].data` | number[] or `{x,y}`[] | **yes** | Values. Use `{x, y}` objects for `scatter`. |
+| `datasets[].data` | number[] or `{x,y}`[] or `{open,high,low,close}`[] | **yes** | Values. Use `{x, y}` objects for `scatter`. Use `{open, high, low, close}` (and optionally `volume`) for `candlestick`/`ohlc`. |
 | `datasets[].color` | string | no | CSS color (for bar/line/area/scatter). |
 | `datasets[].colors` | string[] | no | Per-slice colors (pie/doughnut only). |
 | `trendline` | boolean | no | Overlay a linear regression trendline on bar, line, area, or scatter charts. |
-| `analytics` | boolean | no | Show a Min / Max / Avg / Sum stats panel below the chart. On line/area charts also draws an average reference line. |
+| `analytics` | boolean | no | Show a stats panel below the chart. For candlestick/ohlc shows High / Low / Close / Change%. For other types shows Min / Max / Avg / Sum. |
+| `volume` | boolean | no | (`candlestick`/`ohlc` only) Show volume bars below the price chart. Requires `volume` field on each data point. |
 
 **Line chart** renders SVG with area fills, dots, Y-axis labels, and multi-dataset support.
 **Area chart** is like line but with a more prominent fill — good for showing volume over time.
 **Scatter chart** plots `{x, y}` data points with optional regression trendline. Pass `datasets[].data` as an array of `{x, y}` objects.
 **Pie/doughnut** renders SVG with percentage legend. Doughnut has a hollow center.
+**Candlestick chart** renders OHLC price candles — green for up days, red for down days. Wicks show high/low range, bodies show open/close. Pass `datasets[0].data` as an array of `{open, high, low, close}` objects (add `volume` per point to enable the volume panel).
+**OHLC chart** is the same as candlestick but uses the classic bar style (vertical line + open/close ticks) instead of filled bodies.
+
+**Candlestick example:**
+
+```json
+{
+  "slug": "aapl-weekly",
+  "type": "chart",
+  "title": "AAPL — Weekly",
+  "colSpan": 2,
+  "content": {
+    "chartType": "candlestick",
+    "labels": ["Mon", "Tue", "Wed", "Thu", "Fri"],
+    "datasets": [
+      {
+        "label": "AAPL",
+        "data": [
+          {"open": 189.50, "high": 192.30, "low": 188.10, "close": 191.80, "volume": 54200000},
+          {"open": 191.80, "high": 193.45, "low": 190.20, "close": 190.55, "volume": 48100000},
+          {"open": 190.55, "high": 191.00, "low": 186.70, "close": 187.90, "volume": 61300000},
+          {"open": 187.90, "high": 190.40, "low": 187.20, "close": 189.75, "volume": 43900000},
+          {"open": 189.75, "high": 194.20, "low": 189.10, "close": 193.60, "volume": 57800000}
+        ]
+      }
+    ],
+    "analytics": true,
+    "volume": true
+  }
+}
+```
 
 **Scatter example:**
 
