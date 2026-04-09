@@ -187,7 +187,7 @@ function renderWidgets(widgets) {
 
   grid.innerHTML = widgets.map((w, i) => {
     const gridStyle = []
-    if (w.colSpan > 1) gridStyle.push(`grid-column: span ${w.colSpan}`)
+    if (w.colSpan) gridStyle.push(`--col-span: ${w.colSpan}`)
     if (w.rowSpan > 1) gridStyle.push(`grid-row: span ${w.rowSpan}`)
     gridStyle.push(`animation-delay:${i * 0.04}s`)
 
