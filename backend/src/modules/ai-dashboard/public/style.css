@@ -895,6 +895,88 @@ body {
   background: #fff;
 }
 
+/* ── Intra-Widget Tabs ───────────────────────────────── */
+.widget-content {
+  display: contents;
+}
+
+.widget-tabs {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+
+.widget-tab-btn {
+  padding: 3px 10px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: rgba(255, 254, 247, 0.5);
+  color: var(--text-muted);
+  font-family: 'Inter', sans-serif;
+  font-size: 0.72rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all var(--t) var(--ease);
+  white-space: nowrap;
+}
+
+.widget-tab-btn:hover {
+  border-color: var(--border-hover);
+  background: var(--amber-light);
+  color: var(--text-dark);
+}
+
+.widget-tab-btn.active {
+  background: var(--amber-light);
+  border-color: var(--amber);
+  color: var(--amber);
+}
+
+/* ── Split Panel Layout ──────────────────────────────── */
+.widget-split {
+  display: flex;
+  gap: 12px;
+  align-items: stretch;
+}
+
+.widget-split-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.widget-split-sidebar {
+  width: 180px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.split-panel {
+  background: rgba(255, 252, 240, 0.45);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.split-panel-title {
+  font-family: 'Playfair Display', Georgia, serif;
+  font-size: 0.63rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  margin-bottom: 6px;
+  padding-bottom: 5px;
+  border-bottom: 1px solid var(--border);
+}
+
 /* ═══════════════════════════════════════════════════════
    NEWS
 ═══════════════════════════════════════════════════════ */
