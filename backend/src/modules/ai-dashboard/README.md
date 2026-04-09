@@ -19,6 +19,7 @@ You have access to the Prism AI Dashboard API. This dashboard displays widgets (
 - **Intra-widget tabs** — any widget can have API-defined tabs that switch its content client-side (no reload).
 - **Split panel** — any widget can render a main content area alongside a sidebar of sub-panels (markdown, list, kv, stat, etc.).
 - **Chart annotations** — mark specific data points on line/area/candlestick/OHLC charts with a callout ring and label.
+- **Embed sizing & scaling** — embed widgets support custom `width`, `height`, and a `scale` factor so non-responsive pages can be rendered at native size and CSS-scaled to fit the grid.
 
 ### Authentication
 
@@ -411,7 +412,9 @@ The timer updates every second with days, hours, minutes, and seconds.
   "title": "Metrics",
   "content": {
     "url": "https://grafana.example.com/d/abc?orgId=1&kiosk",
-    "height": 300
+    "height": 600,
+    "width": "100%",
+    "scale": 0.75
   },
   "colSpan": 4
 }
@@ -421,8 +424,17 @@ The timer updates every second with days, hours, minutes, and seconds.
 |-------|------|----------|-------------|
 | `url` | string | **yes** | URL to embed. |
 | `height` | number | no | Iframe height in pixels (default: 200). |
+| `width` | number \| string | no | Iframe width. Number = pixels; string = any CSS value (e.g. `"80%"`, `"600px"`). Default: `"100%"`. |
+| `scale` | number | no | CSS transform scale applied after rendering (e.g. `0.5` = 50%, `1.5` = 150%). The wrapper clips to the post-scale size, so the page grid layout is unaffected. Useful for embedding non-responsive pages at their native width then zooming them to fit. |
 
 Sandboxed with `allow-scripts allow-same-origin`.
+
+**Scaling example** — embed a 1200 px-wide dashboard, render at full size then shrink to fit a 4-column widget:
+```json
+{
+  "content": { "url": "...", "width": 1200, "height": 800, "scale": 0.5 }
+}
+```
 
 ---
 
@@ -887,6 +899,7 @@ When using `style` on a widget, these combinations produce consistent results:
 - **Wide chart:** `colSpan: 2` or `colSpan: 3` for charts with many labels
 - **Full-width:** `colSpan: 4` for tables, embeds, or hero markdown
 - **Tall widget:** `rowSpan: 2` for lists, embeds, or dense charts
+- **Scaled embed:** set `content.scale` (e.g. `0.6`) with a large `content.width`/`height` to shrink a fixed-layout page into the widget frame
 
 **Recommended `layoutCols` values by content density:**
 
