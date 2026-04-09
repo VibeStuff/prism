@@ -202,7 +202,8 @@ function renderWidgets(widgets) {
     if (s.opacity != null) gridStyle.push(`opacity: ${s.opacity}`)
     if (s.padding) gridStyle.push(`padding: ${s.padding}`)
     const hasCustom = s.bgColor || s.bgGradient || s.headerColor || s.textColor || s.borderColor || s.accentColor
-    const cls = `widget-card${hasCustom ? ' widget-custom' : ''}`
+    const isFillCard = w.type === 'html' && (w.content || {}).fillCard === true
+    const cls = `widget-card${hasCustom ? ' widget-custom' : ''}${isFillCard ? ' widget-card-fill' : ''}`
 
     const icon = w.icon ? `<span class="widget-title-icon">${esc(w.icon)}</span>` : ''
     const titleHtml = `<div class="widget-title">${icon}${esc(w.title)}</div>`
@@ -324,7 +325,11 @@ function renderMarkdownWidget(c) {
 function renderHtmlWidget(c) {
   const raw = c.html || ''
   const encoded = raw.replace(/"/g, '&quot;')
-  return `<iframe class="widget-html-frame" sandbox="allow-scripts" srcdoc="${encoded}" loading="lazy"></iframe>`
+  if (c.fillCard) {
+    return `<iframe class="widget-html-frame widget-html-fill" sandbox="allow-scripts" srcdoc="${encoded}" loading="lazy"></iframe>`
+  }
+  const heightStyle = c.height != null ? ` style="height:${parseInt(c.height)}px"` : ''
+  return `<iframe class="widget-html-frame" sandbox="allow-scripts" srcdoc="${encoded}" loading="lazy"${heightStyle}></iframe>`
 }
 
 function renderChartWidget(c) {
@@ -342,17 +347,21 @@ function renderChartWidget(c) {
 function renderBarChart(labels, datasets, c = {}) {
   const showTrend = c.trendline === true
   const showAnalytics = c.analytics === true
+  const chartId = 'chart-' + Math.random().toString(36).slice(2, 8)
   const allValues = datasets.flatMap(d => d.data || [])
-  const maxVal = Math.max(...allValues, 1)
+  const maxVal = c.yMax != null ? c.yMax : Math.max(...allValues, 1)
+  const minVal = c.yMin != null ? c.yMin : 0
+  const range = maxVal - minVal || 1
 
   let html = '<div class="widget-chart"><div class="chart-bar-group">'
   labels.forEach((label, i) => {
     html += '<div class="chart-bar-wrap">'
     datasets.forEach((ds, di) => {
       const val = (ds.data || [])[i] || 0
-      const pct = Math.max(2, (val / maxVal) * 100)
+      const pct = Math.max(2, ((val - minVal) / range) * 100)
       const color = ds.color || CHART_COLORS[di % CHART_COLORS.length]
-      html += `<div class="chart-bar" style="height:${pct}%;background:${color}" title="${esc(ds.label || '')}: ${val}"></div>`
+      const hideStyle = ds.hidden ? 'display:none;' : ''
+      html += `<div class="chart-bar" data-chart="${chartId}" data-ds="${di}" style="${hideStyle}height:${pct}%;background:${color}" title="${esc(ds.label || '')}: ${val}"></div>`
     })
     html += `<div class="chart-bar-label">${esc(label)}</div></div>`
   })
@@ -368,8 +377,8 @@ function renderBarChart(labels, datasets, c = {}) {
       const n = data.length
       const x0 = (0.5 / n) * 100
       const x1 = ((n - 0.5) / n) * 100
-      const y0 = Math.max(0, Math.min(100, 100 - (trend.intercept / maxVal) * 100))
-      const y1 = Math.max(0, Math.min(100, 100 - ((trend.slope * (n - 1) + trend.intercept) / maxVal) * 100))
+      const y0 = Math.max(0, Math.min(100, 100 - ((trend.intercept - minVal) / range) * 100))
+      const y1 = Math.max(0, Math.min(100, 100 - ((trend.slope * (n - 1) + trend.intercept - minVal) / range) * 100))
       return `<line x1="${x0}" y1="${y0}" x2="${x1}" y2="${y1}" stroke="${color}" stroke-width="2" stroke-dasharray="6,3" opacity="0.85"/>`
     }).join('')
     if (lines) {
@@ -378,7 +387,7 @@ function renderBarChart(labels, datasets, c = {}) {
   }
 
   html += '</div>'
-  html += renderChartLegend(datasets)
+  html += renderChartLegend(datasets, chartId)
   if (showAnalytics) html += renderChartAnalytics(datasets)
   html += '</div>'
   return html
@@ -388,10 +397,11 @@ function renderLineChart(labels, datasets, c = {}) {
   const showTrend = c.trendline === true
   const showAnalytics = c.analytics === true
   const isArea = c.chartType === 'area'
+  const chartId = 'chart-' + Math.random().toString(36).slice(2, 8)
   const W = 300, H = 140, PAD = 24
   const allValues = datasets.flatMap(d => d.data || [])
-  const maxVal = Math.max(...allValues, 1)
-  const minVal = Math.min(...allValues, 0)
+  const maxVal = c.yMax != null ? c.yMax : Math.max(...allValues, 1)
+  const minVal = c.yMin != null ? c.yMin : Math.min(...allValues, 0)
   const range = maxVal - minVal || 1
   const stepX = (W - PAD * 2) / Math.max(labels.length - 1, 1)
 
@@ -423,6 +433,9 @@ function renderLineChart(labels, datasets, c = {}) {
     })
     const ptStr = points.map(p => `${p.x},${p.y}`).join(' ')
 
+    const groupStyle = ds.hidden ? ' style="display:none"' : ''
+    svg += `<g id="${chartId}-ds-${di}"${groupStyle}>`
+
     // Area fill (more opaque for 'area' type)
     if (points.length > 1) {
       const first = points[0].x
@@ -448,6 +461,8 @@ function renderLineChart(labels, datasets, c = {}) {
         svg += `<line x1="${tx0}" y1="${ty0}" x2="${tx1}" y2="${ty1}" stroke="${color}" stroke-width="1.5" stroke-dasharray="5,3" opacity="0.7"/>`
       }
     }
+
+    svg += '</g>'
   })
 
   // Annotations
@@ -485,7 +500,7 @@ function renderLineChart(labels, datasets, c = {}) {
 
   svg += '</svg>'
   let html = `<div class="widget-chart">${svg}`
-  html += renderChartLegend(datasets)
+  html += renderChartLegend(datasets, chartId)
   if (showAnalytics) html += renderChartAnalytics(datasets)
   html += '</div>'
   return html
@@ -494,13 +509,15 @@ function renderLineChart(labels, datasets, c = {}) {
 function renderScatterChart(datasets, c = {}) {
   const showTrend = c.trendline === true
   const showAnalytics = c.analytics === true
+  const chartId = 'chart-' + Math.random().toString(36).slice(2, 8)
   const W = 300, H = 140, PAD = 24
 
   const allPts = datasets.flatMap(d => d.data || [])
   const allX = allPts.map(p => typeof p === 'object' ? p.x : 0)
   const allY = allPts.map(p => typeof p === 'object' ? p.y : Number(p))
   const maxX = Math.max(...allX, 1), minX = Math.min(...allX, 0)
-  const maxY = Math.max(...allY, 1), minY = Math.min(...allY, 0)
+  const maxY = c.yMax != null ? c.yMax : Math.max(...allY, 1)
+  const minY = c.yMin != null ? c.yMin : Math.min(...allY, 0)
   const rangeX = maxX - minX || 1, rangeY = maxY - minY || 1
 
   const toX = x => PAD + ((x - minX) / rangeX) * (W - PAD * 2)
@@ -522,6 +539,9 @@ function renderScatterChart(datasets, c = {}) {
       typeof p === 'object' ? { sx: toX(p.x), sy: toY(p.y), rx: p.x, ry: p.y } : null
     ).filter(Boolean)
 
+    const groupStyle = ds.hidden ? ' style="display:none"' : ''
+    svg += `<g id="${chartId}-ds-${di}"${groupStyle}>`
+
     pts.forEach(p => {
       svg += `<circle cx="${p.sx}" cy="${p.sy}" r="4" fill="${color}" opacity="0.75"><title>${esc(ds.label || '')}: (${p.rx}, ${p.ry})</title></circle>`
     })
@@ -542,6 +562,8 @@ function renderScatterChart(datasets, c = {}) {
       const intercept = yMean - slope * xMean
       svg += `<line x1="${toX(minX)}" y1="${toY(slope * minX + intercept)}" x2="${toX(maxX)}" y2="${toY(slope * maxX + intercept)}" stroke="${color}" stroke-width="1.5" stroke-dasharray="5,3" opacity="0.7"/>`
     }
+
+    svg += '</g>'
   })
 
   // X-axis labels (5 ticks)
@@ -552,7 +574,7 @@ function renderScatterChart(datasets, c = {}) {
 
   svg += '</svg>'
   let html = `<div class="widget-chart">${svg}`
-  html += renderChartLegend(datasets)
+  html += renderChartLegend(datasets, chartId)
   if (showAnalytics) html += renderChartAnalytics(datasets)
   html += '</div>'
   return html
@@ -602,15 +624,39 @@ function renderPieChart(labels, datasets, type) {
   return html
 }
 
-function renderChartLegend(datasets) {
-  if (datasets.length <= 1) return ''
+function renderChartLegend(datasets, chartId) {
+  const hasHidden = datasets.some(d => d.hidden)
+  if (datasets.length <= 1 && !hasHidden) return ''
   let html = '<div class="chart-legend">'
   datasets.forEach((ds, di) => {
     const color = ds.color || CHART_COLORS[di % CHART_COLORS.length]
-    html += `<div class="chart-legend-item"><div class="chart-legend-dot" style="background:${color}"></div>${esc(ds.label || '')}</div>`
+    const hiddenClass = ds.hidden ? ' chart-legend-hidden' : ''
+    const idAttr = chartId ? ` id="${chartId}-leg-${di}"` : ''
+    const clickAttr = chartId ? ` onclick="toggleChartDataset('${chartId}',${di})" style="cursor:pointer"` : ''
+    html += `<div class="chart-legend-item${hiddenClass}"${idAttr}${clickAttr}><div class="chart-legend-dot" style="background:${color}"></div>${esc(ds.label || '')}</div>`
   })
   html += '</div>'
   return html
+}
+
+window.toggleChartDataset = function (chartId, di) {
+  // SVG-based charts: toggle <g> group
+  const group = document.getElementById(`${chartId}-ds-${di}`)
+  if (group) {
+    const nowHidden = group.style.display !== 'none'
+    group.style.display = nowHidden ? 'none' : ''
+    const leg = document.getElementById(`${chartId}-leg-${di}`)
+    if (leg) leg.classList.toggle('chart-legend-hidden', nowHidden)
+    return
+  }
+  // Bar charts: toggle bars by data attributes
+  const bars = document.querySelectorAll(`[data-chart="${chartId}"][data-ds="${di}"]`)
+  if (bars.length) {
+    const nowHidden = bars[0].style.display !== 'none'
+    bars.forEach(el => { el.style.display = nowHidden ? 'none' : '' })
+    const leg = document.getElementById(`${chartId}-leg-${di}`)
+    if (leg) leg.classList.toggle('chart-legend-hidden', nowHidden)
+  }
 }
 
 function renderCandlestickChart(labels, datasets, c = {}) {

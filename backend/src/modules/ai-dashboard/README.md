@@ -85,7 +85,7 @@ All endpoints are under `/ai-dashboard`. Example: `http://localhost:3000/ai-dash
       "expiresAt": "ISO 8601 datetime | null — Auto-hide after this time"
     }
   ],
-  "clearWidgets": "boolean — Delete ALL existing widgets before inserting (default: false)",
+  "clearWidgets": "boolean | string[] — Controls widget deletion before upserting (default: false). true = delete all existing widgets. string[] = delete all widgets whose slugs are NOT in the array (keep only the listed slugs). false = no deletion.",
   "clearNews": "boolean — Delete ALL existing news before inserting (default: false)"
 }
 ```
@@ -182,6 +182,8 @@ All endpoints are under `/ai-dashboard`. Example: `http://localhost:3000/ai-dash
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `html` | string | **yes** | Raw HTML rendered in a sandboxed iframe. |
+| `height` | number | no | Iframe height in pixels. Overrides the CSS default (120 px). Ignored when `fillCard` is true. |
+| `fillCard` | boolean | no | When true, the iframe expands to fill the remaining card height (useful with tall `rowSpan` widgets). The parent container is set to `flex:1` so the iframe grows to fill the card. |
 
 #### `chart` — Bar, line, area, scatter, pie, doughnut, or candlestick chart
 
@@ -212,9 +214,12 @@ All endpoints are under `/ai-dashboard`. Example: `http://localhost:3000/ai-dash
 | `datasets[].data` | number[] or `{x,y}`[] or `{open,high,low,close}`[] | **yes** | Values. Use `{x, y}` objects for `scatter`. Use `{open, high, low, close}` (and optionally `volume`) for `candlestick`/`ohlc`. |
 | `datasets[].color` | string | no | CSS color (for bar/line/area/scatter). |
 | `datasets[].colors` | string[] | no | Per-slice colors (pie/doughnut only). |
+| `datasets[].hidden` | boolean | no | When true, this dataset is hidden on first render. The user can click its legend entry to toggle it back. No-op for pie/doughnut/candlestick/ohlc. |
 | `trendline` | boolean | no | Overlay a linear regression trendline on bar, line, area, or scatter charts. |
 | `analytics` | boolean | no | Show a stats panel below the chart. For candlestick/ohlc shows High / Low / Close / Change%. For other types shows Min / Max / Avg / Sum. |
 | `volume` | boolean | no | (`candlestick`/`ohlc` only) Show volume bars below the price chart. Requires `volume` field on each data point. |
+| `yMin` | number | no | Fix the Y-axis minimum value. Applies to bar, line, area, scatter. Default: derived from data. |
+| `yMax` | number | no | Fix the Y-axis maximum value. Applies to bar, line, area, scatter. Default: derived from data. |
 
 **Line chart** renders SVG with area fills, dots, Y-axis labels, and multi-dataset support.
 **Area chart** is like line but with a more prominent fill — good for showing volume over time.
@@ -685,10 +690,30 @@ For granular control beyond bulk push:
 | `PUT` | `/ai-dashboard/api/news/:id` | Token | Partial update by ID. |
 | `DELETE` | `/ai-dashboard/api/news/:id` | Token | Delete by ID. |
 | `GET` | `/ai-dashboard/api/widgets?all=true` | Public | List widgets (hidden filtered by default; `?all=true` includes hidden). |
+| `GET` | `/ai-dashboard/api/widget/:slug` | Public | Fetch a single widget by slug. Returns 404 `{"error":"not found"}` if the slug does not exist on the resolved tab. |
 | `POST` | `/ai-dashboard/api/widgets` | Token | Upsert one widget by slug. |
 | `DELETE` | `/ai-dashboard/api/widgets/:id` | Token | Delete by database ID. |
 | `GET` | `/ai-dashboard/api/meta` | Public | Get dashboard metadata. |
 | `PUT` | `/ai-dashboard/api/meta` | Token | Upsert metadata. |
+
+---
+
+### Individual Widget Endpoints
+
+Fetch a single widget by its slug without listing all widgets.
+
+**`GET /ai-dashboard/api/widget/:slug`** — Returns the full widget object.
+
+Optional query parameter: `?tab=<slug>` to specify which tab to look up the widget on (defaults to the default tab).
+
+**Response (200):** the widget object (same shape as a push payload `widgets[]` entry plus database fields like `id`, `tabId`, `createdAt`, `updatedAt`).
+
+**Response (404):** `{ "error": "not found" }` — slug does not exist on the resolved tab.
+
+```
+GET /ai-dashboard/api/widget/server-status
+GET /ai-dashboard/api/widget/main-chart?tab=analytics
+```
 
 ---
 
@@ -697,6 +722,11 @@ For granular control beyond bulk push:
 **Full refresh (replace everything):**
 ```json
 { "clearWidgets": true, "clearNews": true, "meta": {...}, "widgets": [...], "news": [...] }
+```
+
+**Replace all except pinned widgets (keep two, delete the rest):**
+```json
+{ "clearWidgets": ["main-chart", "analysis"], "widgets": [...updated content...] }
 ```
 
 **Update one widget without touching others:**
