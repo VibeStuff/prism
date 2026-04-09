@@ -15,6 +15,11 @@ A dashboard with zero hardcoded content. Every widget, news box, title, and layo
 
 You have access to the Prism AI Dashboard API. This dashboard displays widgets (stat cards, lists, markdown, charts including candlestick/OHLC stock charts, tables, progress bars, countdowns, key-value pairs, images, embeds, and raw HTML) and news boxes. You control **all** content — nothing is hardcoded. Every visual element is created, updated, or removed by your API calls. The dashboard auto-updates in real time via WebSocket when you push changes.
 
+**Advanced widget capabilities:**
+- **Intra-widget tabs** — any widget can have API-defined tabs that switch its content client-side (no reload).
+- **Split panel** — any widget can render a main content area alongside a sidebar of sub-panels (markdown, list, kv, stat, etc.).
+- **Chart annotations** — mark specific data points on line/area/candlestick/OHLC charts with a callout ring and label.
+
 ### Authentication
 
 Every write request (POST, PUT, DELETE) requires this header:
@@ -269,6 +274,7 @@ All endpoints are under `/ai-dashboard`. Example: `http://localhost:3000/ai-dash
     "analytics": true
   }
 }
+```
 
 #### `progress` — Progress bars
 
@@ -417,6 +423,203 @@ The timer updates every second with days, hours, minutes, and seconds.
 | `height` | number | no | Iframe height in pixels (default: 200). |
 
 Sandboxed with `allow-scripts allow-same-origin`.
+
+---
+
+### Advanced Widget Features
+
+These three features can be added to the `content` object of **any widget** and can be combined freely with each other.
+
+#### Intra-Widget Tabs
+
+Tabs switch the rendered content of a single widget client-side. Useful for showing multiple datasets, views, or time ranges without creating separate widgets.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `tabs` | array | **yes** | Tab definitions: `{ key, label }` pairs. `key` is the lookup key into `tabData`; `label` is the displayed button text. |
+| `tabData` | object | **yes** | Map of `key → content`. Each value is the full content payload for that tab (same shape as the widget type's normal `content`). |
+| `defaultTab` | string | no | Key of the tab to show on first render. Falls back to `tabs[0]`. |
+
+Tabs work with **all widget types** — a tab can switch between a chart, a markdown block, a table, etc. Each `tabData` entry is just the content you'd normally pass to that widget type.
+
+```json
+{
+  "slug": "market-chart",
+  "type": "chart",
+  "title": "Stock Performance",
+  "colSpan": 3,
+  "content": {
+    "tabs": [
+      { "key": "aapl", "label": "AAPL" },
+      { "key": "msft", "label": "MSFT" },
+      { "key": "googl", "label": "GOOGL" },
+      { "key": "summary", "label": "Summary" }
+    ],
+    "defaultTab": "aapl",
+    "tabData": {
+      "aapl": {
+        "chartType": "candlestick",
+        "labels": ["Mon", "Tue", "Wed", "Thu", "Fri"],
+        "datasets": [{ "label": "AAPL", "data": [
+          {"open": 189.50, "high": 192.30, "low": 188.10, "close": 191.80},
+          {"open": 191.80, "high": 193.45, "low": 190.20, "close": 190.55},
+          {"open": 190.55, "high": 191.00, "low": 186.70, "close": 187.90},
+          {"open": 187.90, "high": 190.40, "low": 187.20, "close": 189.75},
+          {"open": 189.75, "high": 194.20, "low": 189.10, "close": 193.60}
+        ]}],
+        "analytics": true
+      },
+      "msft": {
+        "chartType": "line",
+        "labels": ["Mon", "Tue", "Wed", "Thu", "Fri"],
+        "datasets": [{ "label": "MSFT", "data": [415, 418, 412, 421, 419] }]
+      },
+      "googl": {
+        "chartType": "line",
+        "labels": ["Mon", "Tue", "Wed", "Thu", "Fri"],
+        "datasets": [{ "label": "GOOGL", "data": [175, 178, 174, 180, 177] }]
+      },
+      "summary": {
+        "markdown": "## Weekly Summary\n\n**AAPL** +2.2% — strong close Friday\n\n**MSFT** +0.96% — steady consolidation\n\n**GOOGL** +1.1% — recovered Thursday dip"
+      }
+    }
+  }
+}
+```
+
+> **Note:** The `"summary"` tab uses a `markdown` content object. When `tabData` entries use a different widget type than the parent widget's `type` field, the `type` field in the entry is used for rendering. Alternatively, you can keep all tabs as chart content and vary only the chart parameters.
+
+#### Split Panel
+
+Adds a sidebar of sub-panels alongside the main widget content. Ideal for showing an AI analysis and/or a news feed next to a chart.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `splitPanel.panels` | array | **yes** | Sidebar panels. Each panel renders as a mini-widget inside the sidebar. |
+| `panels[].title` | string | no | Panel heading (small uppercase label). |
+| `panels[].type` | string | no | Widget type for the panel content (`markdown`, `list`, `kv`, `stat`, `progress`, `table`). Defaults to `markdown`. |
+| `panels[].content` | object | **yes** | Content payload matching the panel's `type`. |
+
+```json
+{
+  "slug": "market-chart",
+  "type": "chart",
+  "title": "S&P 500",
+  "colSpan": 4,
+  "content": {
+    "chartType": "line",
+    "labels": ["Mon", "Tue", "Wed", "Thu", "Fri"],
+    "datasets": [{ "label": "SPX", "data": [5218, 5241, 5195, 5267, 5254] }],
+    "splitPanel": {
+      "panels": [
+        {
+          "title": "Analysis",
+          "type": "markdown",
+          "content": {
+            "markdown": "**Bullish bias** maintained above 5,200 support.\n\nMomentum indicators suggest continuation. Watch Friday's close for confirmation."
+          }
+        },
+        {
+          "title": "News",
+          "type": "list",
+          "content": {
+            "items": [
+              { "text": "Fed holds rates at 4.25%", "icon": "🏦", "link": "https://reuters.com/..." },
+              { "text": "Jobs report beats estimates", "icon": "📊" }
+            ]
+          }
+        }
+      ]
+    }
+  }
+}
+```
+
+#### Combining Tabs + Split Panel
+
+Put `splitPanel` inside each `tabData` entry for a per-tab sidebar, or at the outer `content` level for a static sidebar shared across all tabs.
+
+```json
+{
+  "slug": "market-chart",
+  "type": "chart",
+  "content": {
+    "tabs": [
+      { "key": "us", "label": "US" },
+      { "key": "eu", "label": "EU" }
+    ],
+    "splitPanel": {
+      "panels": [
+        { "title": "Analysis", "type": "markdown", "content": { "markdown": "Market overview..." } }
+      ]
+    },
+    "tabData": {
+      "us": {
+        "chartType": "line",
+        "labels": ["Mon", "Tue", "Wed", "Thu", "Fri"],
+        "datasets": [{ "label": "SPX", "data": [5218, 5241, 5195, 5267, 5254] }]
+      },
+      "eu": {
+        "chartType": "line",
+        "labels": ["Mon", "Tue", "Wed", "Thu", "Fri"],
+        "datasets": [{ "label": "STOXX", "data": [502, 498, 505, 511, 508] }]
+      }
+    }
+  }
+}
+```
+
+The sidebar (from outer `splitPanel`) stays visible while tabs switch the chart.
+
+#### Chart Annotations
+
+Mark specific data points on `line`, `area`, `candlestick`, or `ohlc` charts with a callout ring and label. Add `annotations` to the chart content alongside `datasets`.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `annotations` | array | **yes** | List of annotation objects. |
+| `annotations[].pointIndex` | integer | **yes** | Zero-based index of the data point to annotate. |
+| `annotations[].label` | string | no | Callout text. Omit for a ring-only marker. |
+| `annotations[].color` | string | no | Ring and label color. Defaults to the dataset's color. |
+| `annotations[].datasetIndex` | integer | no | Which dataset to annotate (default: `0`). Line/area only. |
+| `annotations[].pointField` | `"open"` / `"high"` / `"low"` / `"close"` | no | Which OHLC field to mark. Candlestick/OHLC only. Default: `"close"`. |
+
+```json
+{
+  "slug": "aapl-weekly",
+  "type": "chart",
+  "title": "AAPL — Weekly",
+  "colSpan": 3,
+  "content": {
+    "chartType": "line",
+    "labels": ["Mon", "Tue", "Wed", "Thu", "Fri"],
+    "datasets": [
+      { "label": "AAPL", "data": [189.5, 191.8, 187.9, 194.2, 193.6] }
+    ],
+    "annotations": [
+      {
+        "datasetIndex": 0,
+        "pointIndex": 3,
+        "label": "Peak",
+        "color": "#b8831a"
+      }
+    ]
+  }
+}
+```
+
+**Candlestick annotation example** (mark the high of Tuesday):
+
+```json
+"annotations": [
+  {
+    "pointIndex": 1,
+    "pointField": "high",
+    "label": "Resistance",
+    "color": "#a84040"
+  }
+]
+```
 
 ---
 

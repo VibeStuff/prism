@@ -50,6 +50,8 @@ function timeAgo(dateStr) {
 
 let activeCategory = null
 let activeTab = null   // slug of the currently-viewed tab (null = server default)
+const activeWidgetTabs = {}  // slug → active intra-widget tab key
+const widgetStore = {}       // slug → widget object (for intra-widget tab re-rendering)
 const CHART_COLORS = ['#b8831a', '#4a6fa8', '#5a8a4a', '#a84040', '#8a5ab8', '#4a8a8a', '#b85a1a', '#1a8ab8']
 
 // ── Chart Math Helpers ──────────────────────────────────
@@ -181,6 +183,8 @@ function renderWidgets(widgets) {
   }
   grid.style.display = ''
 
+  widgets.forEach(w => { widgetStore[w.slug] = w })
+
   grid.innerHTML = widgets.map((w, i) => {
     const gridStyle = []
     if (w.colSpan > 1) gridStyle.push(`grid-column: span ${w.colSpan}`)
@@ -202,7 +206,7 @@ function renderWidgets(widgets) {
 
     const icon = w.icon ? `<span class="widget-title-icon">${esc(w.icon)}</span>` : ''
     const titleHtml = `<div class="widget-title">${icon}${esc(w.title)}</div>`
-    const inner = `${titleHtml}${renderWidgetContent(w)}`
+    const inner = `${titleHtml}<div id="wc-${esc(w.slug)}" class="widget-content">${renderWidgetContent(w)}</div>`
     const body = w.link
       ? `<a href="${esc(w.link)}" target="_blank" rel="noopener" class="widget-link-wrap">${inner}</a>`
       : inner
@@ -216,7 +220,17 @@ function renderWidgets(widgets) {
 
 function renderWidgetContent(w) {
   const c = w.content || {}
-  switch (w.type) {
+  if (c.tabs && Array.isArray(c.tabs) && c.tabs.length && c.tabData) {
+    return renderTabbedWidget(w, c)
+  }
+  if (c.splitPanel) {
+    return renderSplitContent(w.type, c)
+  }
+  return renderRawContent(w.type, c)
+}
+
+function renderRawContent(type, c) {
+  switch (type) {
     case 'stat': return renderStatWidget(c)
     case 'list': return renderListWidget(c)
     case 'markdown': return renderMarkdownWidget(c)
@@ -228,8 +242,56 @@ function renderWidgetContent(w) {
     case 'countdown': return renderCountdownWidget(c)
     case 'kv': return renderKvWidget(c)
     case 'embed': return renderEmbedWidget(c)
-    default: return `<div class="widget-markdown"><p>Unknown widget type: ${esc(w.type)}</p></div>`
+    default: return `<div class="widget-markdown"><p>Unknown widget type: ${esc(type)}</p></div>`
   }
+}
+
+function renderTabbedWidget(w, c) {
+  const tabs = c.tabs || []
+  const tabData = c.tabData || {}
+  let activeKey = activeWidgetTabs[w.slug]
+  if (!activeKey || !tabData[activeKey]) {
+    activeKey = c.defaultTab || (tabs[0] && tabs[0].key)
+  }
+  const activeContent = tabData[activeKey] || {}
+  const mergedContent = Object.assign({}, activeContent)
+  if (!mergedContent.splitPanel && c.splitPanel) {
+    mergedContent.splitPanel = c.splitPanel
+  }
+  let html = mergedContent.splitPanel
+    ? renderSplitContent(w.type, mergedContent)
+    : renderRawContent(w.type, mergedContent)
+  html += '<div class="widget-tabs">'
+  tabs.forEach(function (tab) {
+    const isActive = tab.key === activeKey
+    html += `<button class="widget-tab-btn${isActive ? ' active' : ''}" onclick="switchWidgetTab('${esc(w.slug)}','${esc(tab.key)}')">${esc(tab.label)}</button>`
+  })
+  html += '</div>'
+  return html
+}
+
+function renderSplitContent(type, c) {
+  const sp = c.splitPanel || {}
+  const mainC = Object.assign({}, c)
+  delete mainC.splitPanel
+  return `<div class="widget-split"><div class="widget-split-main">${renderRawContent(type, mainC)}</div><div class="widget-split-sidebar">${renderSplitSidebar(sp.panels || [])}</div></div>`
+}
+
+function renderSplitSidebar(panels) {
+  return panels.map(function (panel) {
+    const title = panel.title ? `<div class="split-panel-title">${esc(panel.title)}</div>` : ''
+    return `<div class="split-panel">${title}${renderRawContent(panel.type || 'markdown', panel.content || {})}</div>`
+  }).join('')
+}
+
+window.switchWidgetTab = function (slug, tabKey) {
+  activeWidgetTabs[slug] = tabKey
+  const w = widgetStore[slug]
+  if (!w) return
+  const el = document.getElementById('wc-' + slug)
+  if (!el) return
+  el.innerHTML = renderWidgetContent(w)
+  startCountdowns()
 }
 
 function renderStatWidget(c) {
@@ -387,6 +449,33 @@ function renderLineChart(labels, datasets, c = {}) {
       }
     }
   })
+
+  // Annotations
+  if (c.annotations && c.annotations.length) {
+    c.annotations.forEach(function (ann) {
+      const dsIdx = ann.datasetIndex || 0
+      const ds = datasets[dsIdx]
+      if (!ds) return
+      const data = ds.data || []
+      const ptIdx = ann.pointIndex
+      if (ptIdx == null || ptIdx < 0 || ptIdx >= data.length) return
+      const val = data[ptIdx]
+      const x = PAD + ptIdx * stepX
+      const y = H - PAD - ((val - minVal) / range) * (H - PAD * 2)
+      const color = ann.color || CHART_COLORS[dsIdx % CHART_COLORS.length]
+      const label = ann.label || ''
+      const above = y > (H / 2)
+      const lx = Math.min(W - PAD - 30, Math.max(PAD + 30, x + (x > W / 2 ? -18 : 18)))
+      const ly = above ? y - 26 : y + 26
+      svg += `<circle cx="${x}" cy="${y}" r="8" fill="none" stroke="${color}" stroke-width="1.8" opacity="0.9"/>`
+      svg += `<line x1="${x}" y1="${above ? y - 10 : y + 10}" x2="${lx}" y2="${above ? ly + 8 : ly - 8}" stroke="${color}" stroke-width="1" stroke-dasharray="3,2" opacity="0.65"/>`
+      if (label) {
+        const tw = Math.max(32, label.length * 5.5 + 10)
+        svg += `<rect x="${lx - tw / 2}" y="${above ? ly - 12 : ly - 1}" width="${tw}" height="13" rx="3" fill="${color}" opacity="0.14"/>`
+        svg += `<text x="${lx}" y="${above ? ly - 2 : ly + 9}" text-anchor="middle" fill="${color}" font-size="7.5" font-weight="600">${esc(label)}</text>`
+      }
+    })
+  }
 
   // X-axis labels
   labels.forEach((label, i) => {
@@ -597,6 +686,33 @@ function renderCandlestickChart(labels, datasets, c = {}) {
       svg += `<rect x="${cx - bodyW / 2}" y="${bodyTop}" width="${bodyW}" height="${bodyH}" fill="${color}" rx="0.5"><title>${esc(labels[i] || String(i + 1))}: O${open} H${high} L${low} C${close}</title></rect>`
     }
   })
+
+  // Annotations
+  if (c.annotations && c.annotations.length) {
+    c.annotations.forEach(function (ann) {
+      const idx = ann.pointIndex
+      if (idx == null || idx < 0 || idx >= data.length) return
+      const candle = data[idx]
+      if (!candle) return
+      const field = ann.pointField || 'close'
+      const val = candle[field]
+      if (val == null) return
+      const cx = PAD + (idx + 0.5) * slotW
+      const y = toY(val)
+      const color = ann.color || '#b8831a'
+      const label = ann.label || ''
+      const above = y > (H / 2)
+      const lx = Math.min(W - PAD - 30, Math.max(PAD + 30, cx + (cx > W / 2 ? -18 : 18)))
+      const ly = above ? y - 26 : y + 26
+      svg += `<circle cx="${cx}" cy="${y}" r="8" fill="none" stroke="${color}" stroke-width="1.8" opacity="0.9"/>`
+      svg += `<line x1="${cx}" y1="${above ? y - 10 : y + 10}" x2="${lx}" y2="${above ? ly + 8 : ly - 8}" stroke="${color}" stroke-width="1" stroke-dasharray="3,2" opacity="0.65"/>`
+      if (label) {
+        const tw = Math.max(32, label.length * 5.5 + 10)
+        svg += `<rect x="${lx - tw / 2}" y="${above ? ly - 12 : ly - 1}" width="${tw}" height="13" rx="3" fill="${color}" opacity="0.14"/>`
+        svg += `<text x="${lx}" y="${above ? ly - 2 : ly + 9}" text-anchor="middle" fill="${color}" font-size="7.5" font-weight="600">${esc(label)}</text>`
+      }
+    })
+  }
 
   // X-axis labels
   labels.forEach((label, i) => {
