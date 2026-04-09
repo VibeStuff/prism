@@ -183,7 +183,9 @@ All endpoints are under `/ai-dashboard`. Example: `http://localhost:3000/ai-dash
 |-------|------|----------|-------------|
 | `html` | string | **yes** | Raw HTML rendered in a sandboxed iframe. |
 | `height` | number | no | Iframe height in pixels. Overrides the CSS default (120 px). Ignored when `fillCard` is true. |
-| `fillCard` | boolean | no | When true, the iframe expands to fill the remaining card height (useful with tall `rowSpan` widgets). The parent container is set to `flex:1` so the iframe grows to fill the card. |
+| `fillCard` | boolean | no | When true, the iframe expands to fill the remaining card height (useful with tall `rowSpan` widgets). The card becomes a flex column so the iframe stretches to fill. |
+
+> **`fillCard` inner HTML requirements** — for content inside the iframe to actually fill the available space, the inner HTML must use CSS-driven sizing rather than JavaScript. Set `height:100%` on `html` and `body`, make the root container `display:flex; flex-direction:column; height:100%`, and give any chart/canvas wrapper `flex:1; min-height:0; position:relative`. **Do not** rely on `window.innerHeight` to set heights — the inner `load` event may fire before the iframe's CSS-applied dimensions are stable, producing the wrong value. If you need Chart.js to re-measure after a tab/range switch, call `chart.resize()` directly rather than recalculating heights in JS.
 
 #### `chart` — Bar, line, area, scatter, pie, doughnut, or candlestick chart
 
