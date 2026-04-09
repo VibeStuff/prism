@@ -191,7 +191,27 @@ body {
   align-items: start;
 }
 
+/* Responsive grid reflow */
+@media (max-width: 1023px) and (min-width: 640px) {
+  .widget-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .widget-card {
+    grid-column: span min(var(--col-span, 1), 2);
+  }
+}
+
+@media (max-width: 639px) {
+  .widget-grid {
+    grid-template-columns: 1fr;
+  }
+  .widget-card {
+    grid-column: span 1;
+  }
+}
+
 .widget-card {
+  grid-column: span var(--col-span, 1);
   background: var(--cream-80);
   border: 1px solid var(--border);
   border-radius: var(--radius);
@@ -358,10 +378,18 @@ body {
   flex-direction: column;
 }
 
+/* Intermediate .widget-content div must also stretch so the iframe can fill it */
+.widget-card-fill .widget-content {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
 .widget-html-fill {
   flex: 1;
   min-height: 0;
-  height: auto;
+  height: 100%;
 }
 
 /* ── Custom Widget Styling ───────────────────────────── */
