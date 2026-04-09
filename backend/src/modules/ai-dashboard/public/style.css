@@ -352,6 +352,18 @@ body {
   background: #fff;
 }
 
+/* fillCard: iframe expands to fill available card height */
+.widget-card-fill {
+  display: flex;
+  flex-direction: column;
+}
+
+.widget-html-fill {
+  flex: 1;
+  min-height: 0;
+  height: auto;
+}
+
 /* ── Custom Widget Styling ───────────────────────────── */
 .widget-custom {
   background: var(--w-bg, var(--cream-80));
@@ -598,6 +610,11 @@ body {
   width: 8px; height: 8px;
   border-radius: 2px;
   flex-shrink: 0;
+}
+
+.chart-legend-hidden {
+  opacity: 0.4;
+  text-decoration: line-through;
 }
 
 /* ── Bar Chart Trendline Overlay ────────────────────── */

@@ -61,7 +61,7 @@ const bulkPushSchema = z.object({
     widgets: z.array(widgetUpsertSchema).optional(),
     meta: metaSchema.optional(),
     clearNews: z.boolean().default(false),
-    clearWidgets: z.boolean().default(false),
+    clearWidgets: z.union([z.boolean(), z.array(z.string())]).default(false),
 })
 
 const tabCreateSchema = z.object({
@@ -228,7 +228,11 @@ const AiDashboardModule: AppModule = {
 
             await services.db.$transaction(async (tx) => {
                 if (clearNews) await tx.aIDashboardNewsItem.deleteMany({ where: { tabId: tab.id } })
-                if (clearWidgets) await tx.aIDashboardWidget.deleteMany({ where: { tabId: tab.id } })
+                if (clearWidgets === true) {
+                    await tx.aIDashboardWidget.deleteMany({ where: { tabId: tab.id } })
+                } else if (Array.isArray(clearWidgets)) {
+                    await tx.aIDashboardWidget.deleteMany({ where: { tabId: tab.id, slug: { notIn: clearWidgets } } })
+                }
 
                 if (news?.length) {
                     await tx.aIDashboardNewsItem.createMany({
@@ -372,6 +376,22 @@ const AiDashboardModule: AppModule = {
                     where: showAll ? { tabId: tab.id } : { tabId: tab.id, visible: true },
                     orderBy: [{ order: 'asc' }, { createdAt: 'asc' }],
                 })
+            },
+        )
+
+        // ── Widgets: Get by Slug ────────────────────────────────────────────
+        server.get<{ Params: { slug: string }; Querystring: { tab?: string } }>(
+            `${prefix}/api/widget/:slug`,
+            { config: { public: true } } as never,
+            async (req, reply) => {
+                const tab = await resolveTab(req.query.tab)
+                if (!tab) return reply.code(404).send({ error: 'not found' })
+
+                const widget = await services.db.aIDashboardWidget.findUnique({
+                    where: { slug_tabId: { slug: req.params.slug, tabId: tab.id } },
+                })
+                if (!widget) return reply.code(404).send({ error: 'not found' })
+                return widget
             },
         )
 
