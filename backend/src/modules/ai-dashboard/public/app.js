@@ -852,9 +852,32 @@ function renderKvWidget(c) {
 
 function renderEmbedWidget(c) {
   const src = c.url || ''
-  const height = c.height || 200
   if (!src) return '<div class="widget-markdown"><p>Embed: no URL</p></div>'
-  return `<iframe class="widget-embed-frame" src="${esc(src)}" style="height:${parseInt(height)}px" sandbox="allow-scripts allow-same-origin" loading="lazy"></iframe>`
+
+  const heightPx = parseInt(c.height) || 200
+  const scale = c.scale != null ? parseFloat(c.scale) : null
+  const rawWidth = c.width
+
+  // Parse width: number → px, string ("80%", "600px") → as-is, omitted → 100%
+  let widthCss = '100%'
+  if (rawWidth != null) {
+    widthCss = typeof rawWidth === 'number' ? `${rawWidth}px` : String(rawWidth)
+  }
+
+  if (scale && !isNaN(scale) && scale > 0 && scale !== 1) {
+    // Render iframe at native size then CSS-scale it down/up.
+    // Wrapper clips to the post-scale dimensions; iframe expands to fill its pre-scale space.
+    const scaledHeight = Math.round(heightPx * scale)
+    // If a pixel width was given, scale that too; otherwise stretch iframe to pre-scale 100%.
+    const iframeWidthStyle = typeof rawWidth === 'number'
+      ? `width:${rawWidth}px`
+      : `width:${(100 / scale).toFixed(4)}%`
+    const wrapperStyle = `height:${scaledHeight}px;overflow:hidden;width:${widthCss};`
+    const iframeStyle = `${iframeWidthStyle};height:${heightPx}px;transform:scale(${scale});transform-origin:top left;`
+    return `<div style="${wrapperStyle}"><iframe class="widget-embed-frame" src="${esc(src)}" style="${iframeStyle}" sandbox="allow-scripts allow-same-origin" loading="lazy"></iframe></div>`
+  }
+
+  return `<iframe class="widget-embed-frame" src="${esc(src)}" style="width:${widthCss};height:${heightPx}px" sandbox="allow-scripts allow-same-origin" loading="lazy"></iframe>`
 }
 
 // ── News Rendering ──────────────────────────────────────
