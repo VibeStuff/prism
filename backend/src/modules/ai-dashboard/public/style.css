@@ -376,6 +376,7 @@ body {
 .widget-card-fill {
   display: flex;
   flex-direction: column;
+  align-self: stretch; /* override align-items:start on the grid so the card gets a real height */
 }
 
 /* Intermediate .widget-content div must also stretch so the iframe can fill it */
