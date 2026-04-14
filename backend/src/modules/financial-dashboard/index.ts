@@ -502,29 +502,23 @@ const FinancialDashboardModule: AppModule = {
             const cached = cacheGet<{ gainers: QuoteData[]; losers: QuoteData[] }>('movers')
             if (cached) return cached
 
-            // Fetch sequentially in small batches to avoid Yahoo Finance rate-limiting
-            const quotes: QuoteData[] = []
-            for (const sym of MOVERS_SYMBOLS) {
-                try {
+            const results = await Promise.allSettled(
+                MOVERS_SYMBOLS.map(sym => {
                     const cacheKey = `quote:${sym}`
                     const cachedQuote = cacheGet<QuoteData>(cacheKey)
-                    if (cachedQuote) {
-                        quotes.push(cachedQuote)
-                    } else {
-                        const q = await fetchYahooQuote(sym)
-                        cacheSet(cacheKey, q)
-                        quotes.push(q)
-                    }
-                } catch {
-                    // skip failed symbol
-                }
-            }
+                    if (cachedQuote) return Promise.resolve(cachedQuote)
+                    return fetchYahooQuote(sym).then(q => { cacheSet(cacheKey, q); return q })
+                }),
+            )
+
+            const quotes = results
+                .map(r => (r.status === 'fulfilled' ? r.value : null))
+                .filter((q): q is QuoteData => q !== null)
+                .sort((a, b) => Math.abs(b.changePercent) - Math.abs(a.changePercent))
 
             if (!quotes.length) {
                 return reply.code(502).send({ error: 'Unable to fetch mover quotes from Yahoo Finance' })
             }
-
-            quotes.sort((a, b) => Math.abs(b.changePercent) - Math.abs(a.changePercent))
 
             const gainers = quotes.filter(q => q.changePercent >= 0).slice(0, 5)
             const losers = quotes.filter(q => q.changePercent < 0).slice(0, 5)
