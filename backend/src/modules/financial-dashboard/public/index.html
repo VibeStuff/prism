@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Financial Dashboard — Prism</title>
+  <link rel="stylesheet" href="{{ASSETS}}/style.css" />
+</head>
+<body>
+  <div class="bg-veil"></div>
+  <div id="app">
+    <header class="fd-header">
+      <div>
+        <div class="fd-title">Markets</div>
+        <div class="fd-subtitle" id="fd-subtitle">Loading market data…</div>
+      </div>
+      <div class="fd-status">
+        <span class="status-dot" id="status-dot"></span>
+        <span id="status-text">Connecting…</span>
+      </div>
+    </header>
+
+    <!-- Index bar -->
+    <div class="index-bar" id="index-bar">
+      <div class="index-card skeleton-card"><div class="skeleton" style="height:60px"></div></div>
+      <div class="index-card skeleton-card"><div class="skeleton" style="height:60px"></div></div>
+      <div class="index-card skeleton-card"><div class="skeleton" style="height:60px"></div></div>
+      <div class="index-card skeleton-card"><div class="skeleton" style="height:60px"></div></div>
+      <div class="index-card skeleton-card"><div class="skeleton" style="height:60px"></div></div>
+    </div>
+
+    <!-- Three-column grid -->
+    <div class="fd-grid">
+      <aside class="fd-sidebar">
+        <section class="fd-card" id="watchlist-panel">
+          <div class="fd-card-title">Watchlist</div>
+          <div id="watchlist-body"><div class="skeleton" style="height:120px;border-radius:8px"></div></div>
+          <div class="watchlist-add">
+            <input type="text" id="watchlist-input" placeholder="Add ticker…" maxlength="10" autocomplete="off" />
+            <button id="watchlist-add-btn" class="btn-add">+</button>
+          </div>
+        </section>
+
+        <section class="fd-card" id="sectors-panel">
+          <div class="fd-card-title">Equity Sectors</div>
+          <div id="sectors-body"><div class="skeleton" style="height:200px;border-radius:8px"></div></div>
+        </section>
+      </aside>
+
+      <main class="fd-main">
+        <section class="fd-card" id="news-panel">
+          <div class="fd-card-title" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+            <span>Market News</span>
+            <span class="filter-badge" id="news-filter-badge" style="display:none">
+              <span id="news-filter-label"></span>
+              <button class="filter-clear-btn" id="news-filter-clear" title="Clear filter">✕</button>
+            </span>
+          </div>
+          <div id="news-body"><div class="skeleton" style="height:300px;border-radius:8px"></div></div>
+          <div id="news-footer" style="display:none;text-align:center;padding-top:12px">
+            <button id="news-more-btn" class="btn-load-more">Load more</button>
+          </div>
+        </section>
+      </main>
+
+      <aside class="fd-research">
+        <div class="fd-card" id="summary-panel">
+          <div class="fd-card-title">Market Summary</div>
+          <div id="summary-body"><div class="skeleton" style="height:80px;border-radius:8px"></div></div>
+        </div>
+
+        <div class="fd-card" id="assets-panel">
+          <div class="fd-card-title">Asset Highlights</div>
+          <div id="assets-body"><div class="skeleton" style="height:80px;border-radius:8px"></div></div>
+        </div>
+
+        <div class="fd-card" id="movers-panel">
+          <div class="fd-card-title">Top Movers</div>
+          <div id="movers-body"><div class="skeleton" style="height:120px;border-radius:8px"></div></div>
+        </div>
+
+        <div class="fd-card" id="trending-panel">
+          <div class="fd-card-title">Trending</div>
+          <div id="trending-body"><div class="skeleton" style="height:100px;border-radius:8px"></div></div>
+        </div>
+
+        <div class="fd-card" id="analysis-panel">
+          <div class="fd-card-title" style="display:flex;align-items:center;justify-content:space-between">
+            <span>AI Analysis</span>
+            <button id="analysis-refresh-btn" class="btn-refresh" title="Refresh analysis">↺</button>
+          </div>
+          <div id="analysis-body"><div class="skeleton" style="height:120px;border-radius:8px"></div></div>
+          <div class="chat-input-row">
+            <input
+              type="text"
+              id="chat-input"
+              class="chat-input"
+              placeholder="Ask AI… add TSLA, focus news on Fed…"
+              autocomplete="off"
+              maxlength="200"
+            />
+            <button id="chat-send-btn" class="chat-send-btn" title="Send">
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                <path d="M1 7h12M8 2l5 5-5 5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+            </button>
+          </div>
+          <div id="chat-actions" class="chat-actions" style="display:none"></div>
+        </div>
+      </aside>
+    </div>
+  </div>
+
+  <div class="toasts" id="toasts"></div>
+  <script src="{{ASSETS}}/app.js"></script>
+</body>
+</html>
