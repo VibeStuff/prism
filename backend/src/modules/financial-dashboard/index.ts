@@ -635,11 +635,11 @@ const FinancialDashboardModule: AppModule = {
         }
 
         // ── AI Analysis: GET — returns persisted analysis (no API call) ───────
-        server.get(`${prefix}/api/analysis`, { config: { public: true } } as never, async (_req, reply) => {
+        server.get(`${prefix}/api/analysis`, { config: { public: true } } as never, async () => {
             const persisted = readAnalysis()
-            if (persisted) return persisted
-            // No persisted analysis yet — return a prompt to generate one
-            return reply.code(204).send()
+            // Return null fields when no analysis has been generated yet —
+            // always a JSON body so the client never calls .json() on an empty response
+            return persisted ?? { analysis: null, generatedAt: null }
         })
 
         // ── AI Analysis: POST — generates fresh analysis and persists it ──────

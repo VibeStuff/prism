@@ -503,19 +503,14 @@ function renderAnalysis(data) {
 async function loadAnalysis() {
   const body = document.getElementById('analysis-body')
   try {
-    const res = await fetch(API + '/api/analysis')
-    if (res.status === 204) {
-      // No analysis yet — show prompt to generate one
+    const data = await apiFetch('/api/analysis')
+    if (!data.analysis) {
       body.innerHTML = `<div class="analysis-meta" style="text-align:center;padding:16px 0">
         No analysis yet — click ↺ to generate one.
       </div>`
       return
     }
-    if (!res.ok) {
-      const e = await res.json().catch(() => ({}))
-      throw new Error(e.error ?? `HTTP ${res.status}`)
-    }
-    renderAnalysis(await res.json())
+    renderAnalysis(data)
   } catch (err) {
     body.innerHTML = `<div class="panel-error">⚠ ${esc(err.message)}</div>`
   }
