@@ -157,11 +157,15 @@ function buildMarketSnapshot(): string {
 
     const lines: string[] = ['=== LIVE MARKET SNAPSHOT ===', '']
 
+    const fmt2 = (n: number | null | undefined, fallback = '—') =>
+        n != null && isFinite(n) ? n.toFixed(2) : fallback
+
     if (indices?.length) {
         lines.push('MAJOR INDICES:')
         for (const q of indices) {
-            const sign = q.changePercent >= 0 ? '+' : ''
-            lines.push(`  ${q.longName}: ${q.price.toFixed(2)} (${sign}${q.changePercent.toFixed(2)}%)`)
+            const pct = q.changePercent ?? 0
+            const sign = pct >= 0 ? '+' : ''
+            lines.push(`  ${q.longName}: ${fmt2(q.price)} (${sign}${fmt2(pct)}%)`)
         }
         lines.push('')
     }
@@ -169,8 +173,9 @@ function buildMarketSnapshot(): string {
     if (sectors?.length) {
         lines.push('SECTOR PERFORMANCE:')
         for (const q of sectors) {
-            const sign = q.changePercent >= 0 ? '+' : ''
-            lines.push(`  ${q.longName} (${q.symbol}): ${sign}${q.changePercent.toFixed(2)}%`)
+            const pct = q.changePercent ?? 0
+            const sign = pct >= 0 ? '+' : ''
+            lines.push(`  ${q.longName} (${q.symbol}): ${sign}${fmt2(pct)}%`)
         }
         lines.push('')
     }
@@ -178,12 +183,12 @@ function buildMarketSnapshot(): string {
     if (movers) {
         lines.push('TOP GAINERS:')
         for (const q of movers.gainers.slice(0, 5)) {
-            lines.push(`  ${q.symbol} (${q.longName}): $${q.price.toFixed(2)} (+${q.changePercent.toFixed(2)}%)`)
+            lines.push(`  ${q.symbol} (${q.longName}): $${fmt2(q.price)} (+${fmt2(q.changePercent ?? 0)}%)`)
         }
         lines.push('')
         lines.push('TOP LOSERS:')
         for (const q of movers.losers.slice(0, 5)) {
-            lines.push(`  ${q.symbol} (${q.longName}): $${q.price.toFixed(2)} (${q.changePercent.toFixed(2)}%)`)
+            lines.push(`  ${q.symbol} (${q.longName}): $${fmt2(q.price)} (${fmt2(q.changePercent ?? 0)}%)`)
         }
         lines.push('')
     }
@@ -568,7 +573,7 @@ const FinancialDashboardModule: AppModule = {
                 ])
             }
 
-            const snapshot = buildMarketSnapshot()
+            const snapshot = (() => { try { return buildMarketSnapshot() } catch { return '(market snapshot unavailable)' } })()
 
             try {
                 const response = await fetch('https://api.anthropic.com/v1/messages', {
@@ -616,7 +621,7 @@ const FinancialDashboardModule: AppModule = {
                 const userMessage = String(req.body?.message ?? '').trim()
                 if (!userMessage) return reply.code(400).send({ error: 'message is required' })
 
-                const snapshot = buildMarketSnapshot()
+                const snapshot = (() => { try { return buildMarketSnapshot() } catch { return '(market snapshot unavailable)' } })()
                 const watchlist = readWatchlist()
 
                 const systemPrompt = `You are a helpful financial dashboard assistant with access to tools to manage the user's experience. You can add or remove stocks from their watchlist and filter the news feed to focus on topics they care about.

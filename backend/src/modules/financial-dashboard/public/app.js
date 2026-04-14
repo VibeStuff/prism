@@ -251,8 +251,11 @@ document.getElementById('watchlist-input').addEventListener('keydown', e => {
 
 async function addWatchlistTicker() {
   const input = document.getElementById('watchlist-input')
+  const btn = document.getElementById('watchlist-add-btn')
   const sym = input.value.trim().toUpperCase()
   if (!sym) return
+  input.disabled = true
+  btn.disabled = true
   try {
     await apiPost('/api/watchlist', { symbol: sym })
     input.value = ''
@@ -260,6 +263,10 @@ async function addWatchlistTicker() {
     toast(`Added ${sym}`)
   } catch (err) {
     toast(err.message, 'err')
+  } finally {
+    input.disabled = false
+    btn.disabled = false
+    input.focus()
   }
 }
 
