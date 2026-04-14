@@ -96,6 +96,32 @@ function writeWatchlist(symbols: string[]): void {
     }
 }
 
+// ─── Analysis persistence ─────────────────────────────────────────────────────
+
+interface PersistedAnalysis {
+    analysis: string
+    generatedAt: string
+}
+
+const ANALYSIS_PATH = path.join(process.cwd(), 'src', 'modules', 'financial-dashboard', 'analysis.json')
+
+function readAnalysis(): PersistedAnalysis | null {
+    try {
+        if (!fs.existsSync(ANALYSIS_PATH)) return null
+        return JSON.parse(fs.readFileSync(ANALYSIS_PATH, 'utf-8')) as PersistedAnalysis
+    } catch {
+        return null
+    }
+}
+
+function writeAnalysis(data: PersistedAnalysis): void {
+    try {
+        fs.writeFileSync(ANALYSIS_PATH, JSON.stringify(data, null, 2), 'utf-8')
+    } catch {
+        // silently fail — don't crash the route
+    }
+}
+
 // ─── Yahoo Finance fetch helpers ──────────────────────────────────────────────
 
 const YF_HEADERS = {
@@ -533,12 +559,12 @@ const FinancialDashboardModule: AppModule = {
             return data
         })
 
-        // ── AI Analysis ──────────────────────────────────────────────────────
-        server.get(`${prefix}/api/analysis`, { config: { public: true } } as never, async (_req, reply) => {
+        // ── AI Analysis: helper to generate fresh analysis ───────────────────
+        async function generateAnalysis(): Promise<PersistedAnalysis> {
             const apiKey = process.env.ANTHROPIC_API_KEY
-            if (!apiKey) return reply.code(503).send({ error: 'ANTHROPIC_API_KEY not configured' })
+            if (!apiKey) throw Object.assign(new Error('ANTHROPIC_API_KEY not configured'), { statusCode: 503 })
 
-            // Warm the cache if cold
+            // Warm the market data cache if cold
             const needsIndices = !cacheGet('indices')
             const needsSectors = !cacheGet('sectors')
             const needsMovers = !cacheGet('movers')
@@ -575,38 +601,54 @@ const FinancialDashboardModule: AppModule = {
 
             const snapshot = (() => { try { return buildMarketSnapshot() } catch { return '(market snapshot unavailable)' } })()
 
+            const response = await fetch('https://api.anthropic.com/v1/messages', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'x-api-key': apiKey,
+                    'anthropic-version': '2023-06-01',
+                },
+                body: JSON.stringify({
+                    model: process.env.FINANCIAL_DASHBOARD_MODEL ?? 'claude-sonnet-4-6',
+                    max_tokens: 600,
+                    system: `You are a concise Wall Street market analyst writing for a professional financial dashboard. Write in tight, punchy prose — no bullet points, no headers, no markdown formatting. 3-4 short paragraphs max. Cover: overall market sentiment, notable sector moves, top movers context, and one key risk or theme to watch. Be specific with numbers from the data provided. Never say "as of my knowledge cutoff" — you are analyzing live data being handed to you.`,
+                    messages: [
+                        {
+                            role: 'user',
+                            content: `Here is today's live market data. Write your analysis now.\n\n${snapshot}`,
+                        },
+                    ],
+                }),
+                signal: AbortSignal.timeout(30000),
+            })
+
+            if (!response.ok) {
+                const err = await response.json().catch(() => ({}))
+                throw Object.assign(new Error('Anthropic API error'), { statusCode: 502, detail: err })
+            }
+
+            const data = await response.json() as { content?: Array<{ text?: string }> }
+            const text = data.content?.[0]?.text ?? ''
+            const result: PersistedAnalysis = { analysis: text, generatedAt: new Date().toISOString() }
+            writeAnalysis(result)
+            return result
+        }
+
+        // ── AI Analysis: GET — returns persisted analysis (no API call) ───────
+        server.get(`${prefix}/api/analysis`, { config: { public: true } } as never, async (_req, reply) => {
+            const persisted = readAnalysis()
+            if (persisted) return persisted
+            // No persisted analysis yet — return a prompt to generate one
+            return reply.code(204).send()
+        })
+
+        // ── AI Analysis: POST — generates fresh analysis and persists it ──────
+        server.post(`${prefix}/api/analysis/refresh`, { config: { public: true } } as never, async (_req, reply) => {
             try {
-                const response = await fetch('https://api.anthropic.com/v1/messages', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'x-api-key': apiKey,
-                        'anthropic-version': '2023-06-01',
-                    },
-                    body: JSON.stringify({
-                        model: process.env.FINANCIAL_DASHBOARD_MODEL ?? 'claude-sonnet-4-6',
-                        max_tokens: 600,
-                        system: `You are a concise Wall Street market analyst writing for a professional financial dashboard. Write in tight, punchy prose — no bullet points, no headers, no markdown formatting. 3-4 short paragraphs max. Cover: overall market sentiment, notable sector moves, top movers context, and one key risk or theme to watch. Be specific with numbers from the data provided. Never say "as of my knowledge cutoff" — you are analyzing live data being handed to you.`,
-                        messages: [
-                            {
-                                role: 'user',
-                                content: `Here is today's live market data. Write your analysis now.\n\n${snapshot}`,
-                            },
-                        ],
-                    }),
-                    signal: AbortSignal.timeout(30000),
-                })
-
-                if (!response.ok) {
-                    const err = await response.json().catch(() => ({}))
-                    return reply.code(502).send({ error: 'Anthropic API error', detail: err })
-                }
-
-                const data = await response.json() as { content?: Array<{ text?: string }> }
-                const text = data.content?.[0]?.text ?? ''
-                return { analysis: text, generatedAt: new Date().toISOString() }
-            } catch (err) {
-                return reply.code(502).send({ error: 'Failed to reach Anthropic API', detail: String(err) })
+                return await generateAnalysis()
+            } catch (err: unknown) {
+                const e = err as { statusCode?: number; message?: string; detail?: unknown }
+                return reply.code(e.statusCode ?? 502).send({ error: e.message ?? 'Failed to generate analysis', detail: e.detail })
             }
         })
 

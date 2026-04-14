@@ -487,31 +487,65 @@ function renderTrending(movers) {
 
 // ── AI Analysis ───────────────────────────────────────────────────────────────
 
+function renderAnalysis(data) {
+  const body = document.getElementById('analysis-body')
+  const paragraphs = data.analysis
+    .split(/\n\n+/)
+    .map(p => p.trim())
+    .filter(Boolean)
+    .map(p => `<p>${esc(p)}</p>`)
+    .join('')
+  body.innerHTML = `<div class="analysis-text">${paragraphs}</div>
+    <div class="analysis-meta">Generated ${timeAgo(data.generatedAt)}</div>`
+}
+
+// On page load: fetch persisted analysis — instant, no API call
 async function loadAnalysis() {
+  const body = document.getElementById('analysis-body')
+  try {
+    const res = await fetch(API + '/api/analysis')
+    if (res.status === 204) {
+      // No analysis yet — show prompt to generate one
+      body.innerHTML = `<div class="analysis-meta" style="text-align:center;padding:16px 0">
+        No analysis yet — click ↺ to generate one.
+      </div>`
+      return
+    }
+    if (!res.ok) {
+      const e = await res.json().catch(() => ({}))
+      throw new Error(e.error ?? `HTTP ${res.status}`)
+    }
+    renderAnalysis(await res.json())
+  } catch (err) {
+    body.innerHTML = `<div class="panel-error">⚠ ${esc(err.message)}</div>`
+  }
+}
+
+// Refresh button: generate fresh analysis via POST, persist it, render it
+async function refreshAnalysis() {
   const body = document.getElementById('analysis-body')
   const btn  = document.getElementById('analysis-refresh-btn')
 
   body.innerHTML = `<div class="skeleton" style="height:120px;border-radius:8px"></div>`
+  btn.disabled = true
   btn.classList.add('spinning')
 
   try {
-    const data = await apiFetch('/api/analysis')
-    const paragraphs = data.analysis
-      .split(/\n\n+/)
-      .map(p => p.trim())
-      .filter(Boolean)
-      .map(p => `<p>${esc(p)}</p>`)
-      .join('')
-    body.innerHTML = `<div class="analysis-text">${paragraphs}</div>
-      <div class="analysis-meta">Generated ${timeAgo(data.generatedAt)}</div>`
+    const res = await fetch(API + '/api/analysis/refresh', { method: 'POST' })
+    if (!res.ok) {
+      const e = await res.json().catch(() => ({}))
+      throw new Error(e.error ?? `HTTP ${res.status}`)
+    }
+    renderAnalysis(await res.json())
   } catch (err) {
     body.innerHTML = `<div class="panel-error">⚠ ${esc(err.message)}</div>`
   } finally {
+    btn.disabled = false
     btn.classList.remove('spinning')
   }
 }
 
-document.getElementById('analysis-refresh-btn').addEventListener('click', loadAnalysis)
+document.getElementById('analysis-refresh-btn').addEventListener('click', refreshAnalysis)
 
 // ── Chat ──────────────────────────────────────────────────────────────────────
 
