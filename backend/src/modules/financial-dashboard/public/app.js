@@ -419,20 +419,31 @@ function renderMovers(movers) {
     return
   }
 
+  const hasGainers = movers.gainers && movers.gainers.length > 0
+  const hasLosers = movers.losers && movers.losers.length > 0
+
+  if (!hasGainers && !hasLosers) {
+    body.innerHTML = `<div class="panel-error">⚠ No mover data available</div>`
+    return
+  }
+
   const col = (items, cls, title) => `
     <div>
       <div class="movers-col-title ${cls}">${title}</div>
-      ${items.slice(0, 3).map(q =>
-        `<div class="mover-row">
-          <span class="mover-symbol">${esc(q.symbol)}</span>
-          ${changeBadge(q.changePercent)}
-        </div>`
-      ).join('')}
+      ${items.length
+        ? items.slice(0, 3).map(q =>
+            `<div class="mover-row">
+              <span class="mover-symbol">${esc(q.symbol)}</span>
+              ${changeBadge(q.changePercent)}
+            </div>`
+          ).join('')
+        : `<div style="font-size:0.72rem;color:var(--text-muted);padding:4px 0">—</div>`
+      }
     </div>`
 
   body.innerHTML = `<div class="movers-grid">
-    ${col(movers.gainers, 'gainers', 'Gainers')}
-    ${col(movers.losers,  'losers',  'Losers')}
+    ${col(movers.gainers ?? [], 'gainers', 'Gainers')}
+    ${col(movers.losers  ?? [], 'losers',  'Losers')}
   </div>`
 }
 

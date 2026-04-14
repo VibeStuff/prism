@@ -498,15 +498,33 @@ const FinancialDashboardModule: AppModule = {
         })
 
         // ── Movers ───────────────────────────────────────────────────────────
-        server.get(`${prefix}/api/movers`, { config: { public: true } } as never, async (_req, _reply) => {
+        server.get(`${prefix}/api/movers`, { config: { public: true } } as never, async (_req, reply) => {
             const cached = cacheGet<{ gainers: QuoteData[]; losers: QuoteData[] }>('movers')
             if (cached) return cached
 
-            const results = await Promise.allSettled(MOVERS_SYMBOLS.map(fetchYahooQuote))
-            const quotes = results
-                .map(r => (r.status === 'fulfilled' ? r.value : null))
-                .filter((q): q is QuoteData => q !== null)
-                .sort((a, b) => Math.abs(b.changePercent) - Math.abs(a.changePercent))
+            // Fetch sequentially in small batches to avoid Yahoo Finance rate-limiting
+            const quotes: QuoteData[] = []
+            for (const sym of MOVERS_SYMBOLS) {
+                try {
+                    const cacheKey = `quote:${sym}`
+                    const cachedQuote = cacheGet<QuoteData>(cacheKey)
+                    if (cachedQuote) {
+                        quotes.push(cachedQuote)
+                    } else {
+                        const q = await fetchYahooQuote(sym)
+                        cacheSet(cacheKey, q)
+                        quotes.push(q)
+                    }
+                } catch {
+                    // skip failed symbol
+                }
+            }
+
+            if (!quotes.length) {
+                return reply.code(502).send({ error: 'Unable to fetch mover quotes from Yahoo Finance' })
+            }
+
+            quotes.sort((a, b) => Math.abs(b.changePercent) - Math.abs(a.changePercent))
 
             const gainers = quotes.filter(q => q.changePercent >= 0).slice(0, 5)
             const losers = quotes.filter(q => q.changePercent < 0).slice(0, 5)
@@ -567,7 +585,7 @@ const FinancialDashboardModule: AppModule = {
                         'anthropic-version': '2023-06-01',
                     },
                     body: JSON.stringify({
-                        model: 'claude-sonnet-4-20250514',
+                        model: process.env.FINANCIAL_DASHBOARD_MODEL ?? 'claude-sonnet-4-6',
                         max_tokens: 600,
                         system: `You are a concise Wall Street market analyst writing for a professional financial dashboard. Write in tight, punchy prose — no bullet points, no headers, no markdown formatting. 3-4 short paragraphs max. Cover: overall market sentiment, notable sector moves, top movers context, and one key risk or theme to watch. Be specific with numbers from the data provided. Never say "as of my knowledge cutoff" — you are analyzing live data being handed to you.`,
                         messages: [
@@ -633,7 +651,7 @@ Keep responses concise — 1-3 sentences confirming what you did and any relevan
                             'anthropic-version': '2023-06-01',
                         },
                         body: JSON.stringify({
-                            model: 'claude-sonnet-4-20250514',
+                            model: process.env.FINANCIAL_DASHBOARD_MODEL ?? 'claude-sonnet-4-6',
                             max_tokens: 512,
                             system: systemPrompt,
                             tools: CHAT_TOOLS,
