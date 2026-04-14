@@ -216,19 +216,23 @@ let lastMovers  = null
 function applyI18n() {
   S = STRINGS[currentLang]
 
+  // Safe setters — won't throw if an element doesn't exist in this HTML version
+  const set = (id, text) => { const el = document.getElementById(id); if (el) el.textContent = text }
+  const ph  = (id, text) => { const el = document.getElementById(id); if (el) el.placeholder  = text }
+
   // Static text
-  document.getElementById('fd-title').textContent        = S.title
-  document.getElementById('title-watchlist').textContent = S.watchlist
-  document.getElementById('watchlist-input').placeholder = S.addTicker
-  document.getElementById('title-sectors').textContent   = S.sectors
-  document.getElementById('title-news').textContent      = S.marketNews
-  document.getElementById('news-more-btn').textContent   = S.loadMore
-  document.getElementById('title-summary').textContent   = S.summary
-  document.getElementById('title-assets').textContent    = S.assets
-  document.getElementById('title-movers').textContent    = S.movers
-  document.getElementById('title-trending').textContent  = S.trending
-  document.getElementById('title-analysis').textContent  = S.aiAnalysis
-  document.getElementById('chat-input').placeholder      = S.chatPlaceholder
+  set('fd-title',          S.title)
+  set('title-watchlist',   S.watchlist)
+  ph ('watchlist-input',   S.addTicker)
+  set('title-sectors',     S.sectors)
+  set('title-news',        S.marketNews)
+  set('news-more-btn',     S.loadMore)
+  set('title-summary',     S.summary)
+  set('title-assets',      S.assets)
+  set('title-movers',      S.movers)
+  set('title-trending',    S.trending)
+  set('title-analysis',    S.aiAnalysis)
+  ph ('chat-input',        S.chatPlaceholder)
 
   // Lang toggle active state
   document.querySelectorAll('.lang-btn').forEach(btn => {
