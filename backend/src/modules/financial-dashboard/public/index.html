@@ -11,12 +11,18 @@
   <div id="app">
     <header class="fd-header">
       <div>
-        <div class="fd-title">Markets</div>
+        <div class="fd-title" id="fd-title">Markets</div>
         <div class="fd-subtitle" id="fd-subtitle">Loading market data…</div>
       </div>
-      <div class="fd-status">
-        <span class="status-dot" id="status-dot"></span>
-        <span id="status-text">Connecting…</span>
+      <div class="fd-header-right">
+        <div class="lang-toggle">
+          <button type="button" class="lang-btn active" data-lang="en">EN</button>
+          <button type="button" class="lang-btn" data-lang="zh">繁中</button>
+        </div>
+        <div class="fd-status">
+          <span class="status-dot" id="status-dot"></span>
+          <span id="status-text">Connecting…</span>
+        </div>
       </div>
     </header>
 
@@ -33,7 +39,7 @@
     <div class="fd-grid">
       <aside class="fd-sidebar">
         <section class="fd-card" id="watchlist-panel">
-          <div class="fd-card-title">Watchlist</div>
+          <div class="fd-card-title" id="title-watchlist">Watchlist</div>
           <div id="watchlist-body"><div class="skeleton" style="height:120px;border-radius:8px"></div></div>
           <div class="watchlist-add">
             <input type="text" id="watchlist-input" placeholder="Add ticker…" maxlength="10" autocomplete="off" />
@@ -42,7 +48,7 @@
         </section>
 
         <section class="fd-card" id="sectors-panel">
-          <div class="fd-card-title">Equity Sectors</div>
+          <div class="fd-card-title" id="title-sectors">Equity Sectors</div>
           <div id="sectors-body"><div class="skeleton" style="height:200px;border-radius:8px"></div></div>
         </section>
       </aside>
@@ -50,7 +56,7 @@
       <main class="fd-main">
         <section class="fd-card" id="news-panel">
           <div class="fd-card-title" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-            <span>Market News</span>
+            <span id="title-news">Market News</span>
             <span class="filter-badge" id="news-filter-badge" style="display:none">
               <span id="news-filter-label"></span>
               <button class="filter-clear-btn" id="news-filter-clear" title="Clear filter">✕</button>
@@ -65,28 +71,28 @@
 
       <aside class="fd-research">
         <div class="fd-card" id="summary-panel">
-          <div class="fd-card-title">Market Summary</div>
+          <div class="fd-card-title" id="title-summary">Market Summary</div>
           <div id="summary-body"><div class="skeleton" style="height:80px;border-radius:8px"></div></div>
         </div>
 
         <div class="fd-card" id="assets-panel">
-          <div class="fd-card-title">Asset Highlights</div>
+          <div class="fd-card-title" id="title-assets">Asset Highlights</div>
           <div id="assets-body"><div class="skeleton" style="height:80px;border-radius:8px"></div></div>
         </div>
 
         <div class="fd-card" id="movers-panel">
-          <div class="fd-card-title">Top Movers</div>
+          <div class="fd-card-title" id="title-movers">Top Movers</div>
           <div id="movers-body"><div class="skeleton" style="height:120px;border-radius:8px"></div></div>
         </div>
 
         <div class="fd-card" id="trending-panel">
-          <div class="fd-card-title">Trending</div>
+          <div class="fd-card-title" id="title-trending">Trending</div>
           <div id="trending-body"><div class="skeleton" style="height:100px;border-radius:8px"></div></div>
         </div>
 
         <div class="fd-card" id="analysis-panel">
           <div class="fd-card-title" style="display:flex;align-items:center;justify-content:space-between">
-            <span>AI Analysis</span>
+            <span id="title-analysis">AI Analysis</span>
             <button id="analysis-refresh-btn" class="btn-refresh" title="Refresh analysis">↺</button>
           </div>
           <div id="analysis-body"><div class="skeleton" style="height:120px;border-radius:8px"></div></div>

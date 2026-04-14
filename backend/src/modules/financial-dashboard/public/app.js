@@ -4,7 +4,109 @@
 
 const API = window.location.pathname.replace(/\/$/, '')
 
-// ── Helpers ──────────────────────────────────────────────────────────────────
+// ── i18n ─────────────────────────────────────────────────────────────────────
+
+const STRINGS = {
+  en: {
+    title: 'Markets',
+    watchlist: 'Watchlist',
+    addTicker: 'Add ticker…',
+    noTickers: 'No tickers. Add one below.',
+    sectors: 'Equity Sectors',
+    marketNews: 'Market News',
+    loadMore: 'Load more',
+    summary: 'Market Summary',
+    assets: 'Asset Highlights',
+    movers: 'Top Movers',
+    gainers: 'Gainers',
+    losers: 'Losers',
+    trending: 'Trending',
+    aiAnalysis: 'AI Analysis',
+    chatPlaceholder: 'Ask AI… add TSLA, focus news on Fed…',
+    noAnalysisYet: 'No analysis yet — click ↺ to generate one.',
+    generatedAt: t => `Generated ${t}`,
+    statusConnecting: 'Connecting…',
+    statusFresh: 'Live · Just updated',
+    statusStale: m => `Live · ${m}m ago`,
+    statusOld: m => `Stale · ${m}m ago`,
+    justNow: 'just now',
+    minsAgo: m => `${m}m ago`,
+    hrsAgo: h => `${h}h ago`,
+    daysAgo: d => `${d}d ago`,
+    indexNames: { '^DJI': 'Dow Jones', '^GSPC': 'S&P 500', '^IXIC': 'Nasdaq', '^RUT': 'Russell 2000', '^VIX': 'VIX' },
+    summaryEquities: (dir, price, chg, sent) =>
+      `US equities are trading ${dir} today. The S&P 500 stands at ${price}, ${chg} on the session — a ${sent} tone heading into the close.`,
+    summaryDowNasdaq: (dp, dc, np, nc) =>
+      `The Dow Jones is at ${dp} (${dc}) while the Nasdaq trades at ${np} (${nc}).`,
+    summaryVix: vixPrice => {
+      const lvl  = vixPrice > 20 ? 'is elevated' : 'remains contained'
+      const desc = vixPrice > 25 ? 'significant market stress' : vixPrice > 20 ? 'heightened caution' : 'relatively calm conditions'
+      return `Volatility ${lvl} — the VIX reads ${fmtPrice(vixPrice, true)}, suggesting ${desc}.`
+    },
+    dirUp: 'higher', dirDown: 'lower',
+    sentStrongBull: 'strongly bullish', sentBull: 'modestly positive',
+    sentBear: 'modestly negative', sentDown: 'under pressure',
+    errIndex:  '⚠ Index data unavailable',
+    errSector: '⚠ Sector data unavailable',
+    errData:   '⚠ Data unavailable',
+    errNews:   '⚠ News unavailable',
+    errMovers: '⚠ No mover data available',
+    errNoData: '⚠ No data',
+    errAsset:  '⚠ Asset data unavailable',
+  },
+  zh: {
+    title: '市場',
+    watchlist: '自選股',
+    addTicker: '新增代號…',
+    noTickers: '尚無股票，請在下方新增。',
+    sectors: '板塊表現',
+    marketNews: '市場新聞',
+    loadMore: '載入更多',
+    summary: '市場摘要',
+    assets: '資產亮點',
+    movers: '漲跌幅排行',
+    gainers: '漲幅榜',
+    losers: '跌幅榜',
+    trending: '熱門股',
+    aiAnalysis: 'AI 分析',
+    chatPlaceholder: '詢問 AI… 新增 TSLA、聚焦聯準會新聞…',
+    noAnalysisYet: '尚無分析 — 點擊 ↺ 生成',
+    generatedAt: t => `生成於 ${t}`,
+    statusConnecting: '連線中…',
+    statusFresh: '即時 · 剛更新',
+    statusStale: m => `即時 · ${m} 分鐘前`,
+    statusOld: m => `已過時 · ${m} 分鐘前`,
+    justNow: '剛剛',
+    minsAgo: m => `${m} 分鐘前`,
+    hrsAgo: h => `${h} 小時前`,
+    daysAgo: d => `${d} 天前`,
+    indexNames: { '^DJI': '道瓊工業', '^GSPC': '標普 500', '^IXIC': '納斯達克', '^RUT': '羅素 2000', '^VIX': '恐慌指數' },
+    summaryEquities: (dir, price, chg, sent) =>
+      `美股今日${dir}，標普 500 報 ${price}，當日變動 ${chg}，呈${sent}格局。`,
+    summaryDowNasdaq: (dp, dc, np, nc) =>
+      `道瓊工業報 ${dp}（${dc}），納斯達克報 ${np}（${nc}）。`,
+    summaryVix: vixPrice => {
+      const lvl  = vixPrice > 20 ? '偏高' : '平穩'
+      const desc = vixPrice > 25 ? '市場明顯承壓' : vixPrice > 20 ? '市場謹慎情緒升溫' : '市場相對平靜'
+      return `波動率${lvl}，VIX 報 ${fmtPrice(vixPrice, true)}，${desc}。`
+    },
+    dirUp: '上漲', dirDown: '下跌',
+    sentStrongBull: '強勢多頭', sentBull: '小幅正向',
+    sentBear: '小幅負向', sentDown: '承壓',
+    errIndex:  '⚠ 指數資料無法取得',
+    errSector: '⚠ 板塊資料無法取得',
+    errData:   '⚠ 資料無法取得',
+    errNews:   '⚠ 新聞無法取得',
+    errMovers: '⚠ 無漲跌幅資料',
+    errNoData: '⚠ 無資料',
+    errAsset:  '⚠ 資產資料無法取得',
+  },
+}
+
+let currentLang = localStorage.getItem('fd-lang') ?? 'en'
+let S = STRINGS[currentLang]
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
 
 function esc(s) {
   const d = document.createElement('div')
@@ -53,18 +155,16 @@ async function apiDelete(path) {
 
 function timeAgo(dateStr) {
   if (!dateStr) return ''
-  const now = Date.now()
-  const then = new Date(dateStr).getTime()
-  const diff = Math.max(0, now - then)
+  const diff = Math.max(0, Date.now() - new Date(dateStr).getTime())
   const mins = Math.floor(diff / 60000)
-  if (mins < 1) return 'just now'
-  if (mins < 60) return `${mins}m ago`
+  if (mins < 1) return S.justNow
+  if (mins < 60) return S.minsAgo(mins)
   const hrs = Math.floor(mins / 60)
-  if (hrs < 24) return `${hrs}h ago`
-  return `${Math.floor(hrs / 24)}d ago`
+  if (hrs < 24) return S.hrsAgo(hrs)
+  return S.daysAgo(Math.floor(hrs / 24))
 }
 
-const fmt = new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+const fmt    = new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const fmtInt = new Intl.NumberFormat('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })
 
 function fmtPrice(v, noSign = false) {
@@ -105,26 +205,64 @@ function renderSparkline(prices, color) {
 // ── State ─────────────────────────────────────────────────────────────────────
 
 let lastRefresh = null
-let newsData = []
-let newsShown = 10
-let newsFilter = null   // { keywords: string[], label: string } | null
+let newsData    = []
+let newsShown   = 10
+let newsFilter  = null   // { keywords: string[], label: string } | null
+let lastIndices = null
+let lastMovers  = null
+
+// ── i18n Application ──────────────────────────────────────────────────────────
+
+function applyI18n() {
+  S = STRINGS[currentLang]
+
+  // Static text
+  document.getElementById('fd-title').textContent        = S.title
+  document.getElementById('title-watchlist').textContent = S.watchlist
+  document.getElementById('watchlist-input').placeholder = S.addTicker
+  document.getElementById('title-sectors').textContent   = S.sectors
+  document.getElementById('title-news').textContent      = S.marketNews
+  document.getElementById('news-more-btn').textContent   = S.loadMore
+  document.getElementById('title-summary').textContent   = S.summary
+  document.getElementById('title-assets').textContent    = S.assets
+  document.getElementById('title-movers').textContent    = S.movers
+  document.getElementById('title-trending').textContent  = S.trending
+  document.getElementById('title-analysis').textContent  = S.aiAnalysis
+  document.getElementById('chat-input').placeholder      = S.chatPlaceholder
+
+  // Lang toggle active state
+  document.querySelectorAll('.lang-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.lang === currentLang)
+  })
+
+  // Re-render sections whose prose changes with lang
+  if (lastIndices) renderSummary(lastIndices)
+  if (lastMovers)  { renderMovers(lastMovers); renderTrending(lastMovers) }
+  updateStatus()
+
+  // Load the persisted analysis for the newly selected language
+  loadAnalysis()
+}
 
 // ── Status Indicator ──────────────────────────────────────────────────────────
 
 function updateStatus() {
   const dot = document.getElementById('status-dot')
   const txt = document.getElementById('status-text')
-  if (!lastRefresh) return
-  const age = (Date.now() - lastRefresh) / 1000 / 60 // minutes
+  if (!lastRefresh) {
+    txt.textContent = S.statusConnecting
+    return
+  }
+  const age = (Date.now() - lastRefresh) / 1000 / 60
   if (age < 2) {
     dot.className = 'status-dot fresh'
-    txt.textContent = 'Live · Just updated'
+    txt.textContent = S.statusFresh
   } else if (age < 5) {
     dot.className = 'status-dot stale'
-    txt.textContent = `Live · ${Math.floor(age)}m ago`
+    txt.textContent = S.statusStale(Math.floor(age))
   } else {
     dot.className = 'status-dot old'
-    txt.textContent = `Stale · ${Math.floor(age)}m ago`
+    txt.textContent = S.statusOld(Math.floor(age))
   }
 }
 
@@ -132,18 +270,10 @@ setInterval(updateStatus, 30000)
 
 // ── Index Bar ─────────────────────────────────────────────────────────────────
 
-const INDEX_NAMES = {
-  '^DJI':  'Dow Jones',
-  '^GSPC': 'S&P 500',
-  '^IXIC': 'Nasdaq',
-  '^RUT':  'Russell 2000',
-  '^VIX':  'VIX',
-}
-
 function renderIndexBar(indices) {
   const bar = document.getElementById('index-bar')
   if (!indices || !indices.length) {
-    bar.innerHTML = `<div class="panel-error">⚠ Index data unavailable</div>`
+    bar.innerHTML = `<div class="panel-error">${S.errIndex}</div>`
     return
   }
 
@@ -154,21 +284,19 @@ function renderIndexBar(indices) {
       ? (q.price > 20 ? '#a84040' : '#5a8a4a')
       : (pct >= 0 ? '#5a8a4a' : '#a84040')
 
-    const spark = renderSparkline(q.closingPrices, color)
+    const spark    = renderSparkline(q.closingPrices, color)
     const badgeCls = pct > 0.005 ? 'up' : pct < -0.005 ? 'down' : 'flat'
-    const vixCls = isVix ? (q.price > 20 ? ' vix-high' : ' vix-low') : ''
-    const displayPrice = isVix
-      ? fmtPrice(q.price, true)
-      : fmtInt.format(q.price)
+    const vixCls   = isVix ? (q.price > 20 ? ' vix-high' : ' vix-low') : ''
+    const displayPrice = isVix ? fmtPrice(q.price, true) : fmtInt.format(q.price)
     const absChange = q.change ?? 0
     const absStr = (absChange >= 0 ? '+' : '') + fmt.format(absChange)
 
     return `<div class="index-card${vixCls}" style="animation-delay:${i * 0.06}s">
       <div class="index-card-header">
-        <div class="index-name">${esc(INDEX_NAMES[q.symbol] ?? q.longName)}</div>
+        <div class="index-name">${esc(S.indexNames[q.symbol] ?? q.longName)}</div>
         ${spark}
       </div>
-      <div class="index-value">${isVix ? '' : ''}${displayPrice}</div>
+      <div class="index-value">${displayPrice}</div>
       <div class="index-change-row">
         <span class="index-change-abs">${absStr}</span>
         <span class="change-badge ${badgeCls}">${fmtChange(pct)}</span>
@@ -182,7 +310,7 @@ function renderIndexBar(indices) {
 async function renderWatchlist(symbols) {
   const body = document.getElementById('watchlist-body')
   if (!symbols || !symbols.length) {
-    body.innerHTML = `<div style="font-size:0.78rem;color:var(--text-muted);padding:8px 0">No tickers. Add one below.</div>`
+    body.innerHTML = `<div style="font-size:0.78rem;color:var(--text-muted);padding:8px 0">${S.noTickers}</div>`
     return
   }
 
@@ -192,12 +320,11 @@ async function renderWatchlist(symbols) {
       <span class="ticker-name skeleton" style="height:12px;width:80px"></span>
       <span class="ticker-right">
         <span class="ticker-price skeleton" style="height:12px;width:50px"></span>
-        <button class="ticker-remove" data-sym="${esc(s)}" title="Remove">✕</button>
+        <button type="button" class="ticker-remove" data-sym="${esc(s)}" title="Remove">✕</button>
       </span>
     </div>`
   ).join('')
 
-  // Attach remove handlers
   body.querySelectorAll('.ticker-remove').forEach(btn => {
     btn.addEventListener('click', async (e) => {
       e.stopPropagation()
@@ -212,7 +339,6 @@ async function renderWatchlist(symbols) {
     })
   })
 
-  // Fetch quotes for all symbols
   try {
     const quotes = await apiFetch(`/api/quotes?symbols=${encodeURIComponent(symbols.join(','))}`)
     quotes.forEach(q => {
@@ -224,7 +350,7 @@ async function renderWatchlist(symbols) {
       right.innerHTML = `
         <span class="ticker-price">${q.error ? '—' : (q.symbol === '^VIX' ? fmtPrice(q.price, true) : '$' + fmtPrice(q.price, true))}</span>
         ${q.error ? '' : changeBadge(q.changePercent)}
-        <button class="ticker-remove" data-sym="${esc(q.symbol)}" title="Remove">✕</button>
+        <button type="button" class="ticker-remove" data-sym="${esc(q.symbol)}" title="Remove">✕</button>
       `
       right.querySelector('.ticker-remove').addEventListener('click', async (e) => {
         e.stopPropagation()
@@ -239,7 +365,7 @@ async function renderWatchlist(symbols) {
       })
     })
   } catch {
-    // quotes failed — already showing skeletons replaced by symbol names
+    // quotes failed — symbols still visible
   }
 }
 
@@ -251,11 +377,11 @@ document.getElementById('watchlist-input').addEventListener('keydown', e => {
 
 async function addWatchlistTicker() {
   const input = document.getElementById('watchlist-input')
-  const btn = document.getElementById('watchlist-add-btn')
-  const sym = input.value.trim().toUpperCase()
+  const btn   = document.getElementById('watchlist-add-btn')
+  const sym   = input.value.trim().toUpperCase()
   if (!sym) return
   input.disabled = true
-  btn.disabled = true
+  btn.disabled   = true
   try {
     await apiPost('/api/watchlist', { symbol: sym })
     input.value = ''
@@ -265,7 +391,7 @@ async function addWatchlistTicker() {
     toast(err.message, 'err')
   } finally {
     input.disabled = false
-    btn.disabled = false
+    btn.disabled   = false
     input.focus()
   }
 }
@@ -275,7 +401,7 @@ async function addWatchlistTicker() {
 function renderSectors(sectors) {
   const body = document.getElementById('sectors-body')
   if (!sectors || !sectors.length) {
-    body.innerHTML = `<div class="panel-error">⚠ Sector data unavailable</div>`
+    body.innerHTML = `<div class="panel-error">${S.errSector}</div>`
     return
   }
 
@@ -302,12 +428,11 @@ function applyNewsFilter(items) {
 }
 
 function renderNews() {
-  const body = document.getElementById('news-body')
-  const footer = document.getElementById('news-footer')
-  const badge = document.getElementById('news-filter-badge')
+  const body       = document.getElementById('news-body')
+  const footer     = document.getElementById('news-footer')
+  const badge      = document.getElementById('news-filter-badge')
   const badgeLabel = document.getElementById('news-filter-label')
 
-  // Update filter badge
   if (newsFilter) {
     badgeLabel.textContent = newsFilter.label
     badge.style.display = 'inline-flex'
@@ -316,10 +441,10 @@ function renderNews() {
   }
 
   const filtered = applyNewsFilter(newsData)
-  const items = filtered.slice(0, newsShown)
+  const items    = filtered.slice(0, newsShown)
 
   if (!newsData.length) {
-    body.innerHTML = `<div class="panel-error">⚠ News unavailable</div>`
+    body.innerHTML = `<div class="panel-error">${S.errNews}</div>`
     footer.style.display = 'none'
     return
   }
@@ -346,7 +471,7 @@ function renderNews() {
 
 function clearNewsFilter() {
   newsFilter = null
-  newsShown = 10
+  newsShown  = 10
   renderNews()
 }
 
@@ -362,22 +487,25 @@ document.getElementById('news-more-btn').addEventListener('click', () => {
 function renderSummary(indices) {
   const body = document.getElementById('summary-body')
   if (!indices || !indices.length) {
-    body.innerHTML = `<div class="panel-error">⚠ Data unavailable</div>`
+    body.innerHTML = `<div class="panel-error">${S.errData}</div>`
     return
   }
 
-  const sp = indices.find(q => q.symbol === '^GSPC')
+  const sp  = indices.find(q => q.symbol === '^GSPC')
   const dow = indices.find(q => q.symbol === '^DJI')
-  const nq = indices.find(q => q.symbol === '^IXIC')
+  const nq  = indices.find(q => q.symbol === '^IXIC')
   const vix = indices.find(q => q.symbol === '^VIX')
 
-  const spDir = sp ? (sp.changePercent >= 0 ? 'higher' : 'lower') : ''
-  const sentiment = sp ? (sp.changePercent > 1 ? 'strongly bullish' : sp.changePercent > 0 ? 'modestly positive' : sp.changePercent > -1 ? 'modestly negative' : 'under pressure') : 'mixed'
+  const spPct  = sp?.changePercent ?? 0
+  const spDir  = spPct >= 0 ? S.dirUp : S.dirDown
+  const sentiment = sp
+    ? (spPct > 1 ? S.sentStrongBull : spPct > 0 ? S.sentBull : spPct > -1 ? S.sentBear : S.sentDown)
+    : ''
 
   const lines = []
-  if (sp) lines.push(`US equities are trading ${spDir} today. The S&P 500 stands at ${fmtInt.format(sp.price)}, ${fmtChange(sp.changePercent)} on the session — a ${sentiment} tone heading into the close.`)
-  if (dow && nq) lines.push(`The Dow Jones is at ${fmtInt.format(dow.price)} (${fmtChange(dow.changePercent)}) while the Nasdaq trades at ${fmtInt.format(nq.price)} (${fmtChange(nq.changePercent)}).`)
-  if (vix) lines.push(`Volatility ${vix.price > 20 ? 'is elevated' : 'remains contained'} — the VIX reads ${fmtPrice(vix.price, true)}, suggesting ${vix.price > 25 ? 'significant market stress' : vix.price > 20 ? 'heightened caution' : 'relatively calm conditions'}.`)
+  if (sp)        lines.push(S.summaryEquities(spDir, fmtInt.format(sp.price), fmtChange(spPct), sentiment))
+  if (dow && nq) lines.push(S.summaryDowNasdaq(fmtInt.format(dow.price), fmtChange(dow.changePercent ?? 0), fmtInt.format(nq.price), fmtChange(nq.changePercent ?? 0)))
+  if (vix)       lines.push(S.summaryVix(vix.price))
 
   body.innerHTML = `<div class="summary-text">${lines.map(l => `<p>${esc(l)}</p>`).join('')}</div>`
 }
@@ -385,21 +513,21 @@ function renderSummary(indices) {
 // ── Asset Highlights ──────────────────────────────────────────────────────────
 
 async function renderAssets() {
-  const body = document.getElementById('assets-body')
+  const body   = document.getElementById('assets-body')
   const assets = [
-    { sym: 'CL=F',   label: 'Crude Oil',     unit: '$/bbl' },
-    { sym: 'BTC-USD', label: 'Bitcoin',        unit: 'USD' },
-    { sym: '^TNX',   label: '10Y Treasury',   unit: '%' },
+    { sym: 'CL=F',    label: 'Crude Oil',   unit: '$/bbl' },
+    { sym: 'BTC-USD', label: 'Bitcoin',      unit: 'USD' },
+    { sym: '^TNX',    label: '10Y Treasury', unit: '%' },
   ]
 
   body.innerHTML = `<div class="skeleton" style="height:80px;border-radius:8px"></div>`
 
   try {
     const quotes = await apiFetch(`/api/quotes?symbols=${assets.map(a => a.sym).join(',')}`)
-    const map = Object.fromEntries(quotes.map(q => [q.symbol ?? q.sym ?? '', q]))
+    const map    = Object.fromEntries(quotes.map(q => [q.symbol ?? '', q]))
 
     body.innerHTML = assets.map(a => {
-      const q = map[a.sym] ?? {}
+      const q     = map[a.sym] ?? {}
       const price = q.price != null ? (a.unit === '%' ? fmt.format(q.price) + '%' : '$' + fmtInt.format(q.price)) : '—'
       return `<div class="asset-row">
         <div>
@@ -413,7 +541,7 @@ async function renderAssets() {
       </div>`
     }).join('')
   } catch {
-    body.innerHTML = `<div class="panel-error">⚠ Asset data unavailable</div>`
+    body.innerHTML = `<div class="panel-error">${S.errAsset}</div>`
   }
 }
 
@@ -422,15 +550,15 @@ async function renderAssets() {
 function renderMovers(movers) {
   const body = document.getElementById('movers-body')
   if (!movers) {
-    body.innerHTML = `<div class="panel-error">⚠ Movers data unavailable</div>`
+    body.innerHTML = `<div class="panel-error">${S.errMovers}</div>`
     return
   }
 
-  const hasGainers = movers.gainers && movers.gainers.length > 0
-  const hasLosers = movers.losers && movers.losers.length > 0
+  const hasGainers = movers.gainers?.length > 0
+  const hasLosers  = movers.losers?.length  > 0
 
   if (!hasGainers && !hasLosers) {
-    body.innerHTML = `<div class="panel-error">⚠ No mover data available</div>`
+    body.innerHTML = `<div class="panel-error">${S.errMovers}</div>`
     return
   }
 
@@ -449,8 +577,8 @@ function renderMovers(movers) {
     </div>`
 
   body.innerHTML = `<div class="movers-grid">
-    ${col(movers.gainers ?? [], 'gainers', 'Gainers')}
-    ${col(movers.losers  ?? [], 'losers',  'Losers')}
+    ${col(movers.gainers ?? [], 'gainers', S.gainers)}
+    ${col(movers.losers  ?? [], 'losers',  S.losers)}
   </div>`
 }
 
@@ -459,17 +587,16 @@ function renderMovers(movers) {
 function renderTrending(movers) {
   const body = document.getElementById('trending-body')
   if (!movers) {
-    body.innerHTML = `<div class="panel-error">⚠ Data unavailable</div>`
+    body.innerHTML = `<div class="panel-error">${S.errData}</div>`
     return
   }
 
-  // Combine gainers + losers, sort by absolute % change, take top 5
   const all = [...(movers.gainers ?? []), ...(movers.losers ?? [])]
     .sort((a, b) => Math.abs(b.changePercent) - Math.abs(a.changePercent))
     .slice(0, 5)
 
   if (!all.length) {
-    body.innerHTML = `<div class="panel-error">⚠ No data</div>`
+    body.innerHTML = `<div class="panel-error">${S.errNoData}</div>`
     return
   }
 
@@ -496,17 +623,17 @@ function renderAnalysis(data) {
     .map(p => `<p>${esc(p)}</p>`)
     .join('')
   body.innerHTML = `<div class="analysis-text">${paragraphs}</div>
-    <div class="analysis-meta">Generated ${timeAgo(data.generatedAt)}</div>`
+    <div class="analysis-meta">${S.generatedAt(timeAgo(data.generatedAt))}</div>`
 }
 
-// On page load: fetch persisted analysis — instant, no API call
+// On page load: fetch persisted analysis for current lang — instant, no API call
 async function loadAnalysis() {
   const body = document.getElementById('analysis-body')
   try {
-    const data = await apiFetch('/api/analysis')
+    const data = await apiFetch(`/api/analysis?lang=${currentLang}`)
     if (!data.analysis) {
       body.innerHTML = `<div class="analysis-meta" style="text-align:center;padding:16px 0">
-        No analysis yet — click ↺ to generate one.
+        ${esc(S.noAnalysisYet)}
       </div>`
       return
     }
@@ -516,7 +643,7 @@ async function loadAnalysis() {
   }
 }
 
-// Refresh button: generate fresh analysis via POST, persist it, render it
+// Refresh button: generate fresh analysis for current lang, persist it, render it
 async function refreshAnalysis() {
   const body = document.getElementById('analysis-body')
   const btn  = document.getElementById('analysis-refresh-btn')
@@ -526,7 +653,11 @@ async function refreshAnalysis() {
   btn.classList.add('spinning')
 
   try {
-    const res = await fetch(API + '/api/analysis/refresh', { method: 'POST' })
+    const res = await fetch(API + '/api/analysis/refresh', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ lang: currentLang }),
+    })
     if (!res.ok) {
       const e = await res.json().catch(() => ({}))
       throw new Error(e.error ?? `HTTP ${res.status}`)
@@ -545,19 +676,18 @@ document.getElementById('analysis-refresh-btn').addEventListener('click', refres
 // ── Chat ──────────────────────────────────────────────────────────────────────
 
 async function sendChat() {
-  const input = document.getElementById('chat-input')
-  const sendBtn = document.getElementById('chat-send-btn')
+  const input       = document.getElementById('chat-input')
+  const sendBtn     = document.getElementById('chat-send-btn')
   const analysisBody = document.getElementById('analysis-body')
-  const actionsEl = document.getElementById('chat-actions')
-  const message = input.value.trim()
+  const actionsEl   = document.getElementById('chat-actions')
+  const message     = input.value.trim()
   if (!message) return
 
   input.value = ''
-  input.disabled = true
+  input.disabled  = true
   sendBtn.disabled = true
   sendBtn.classList.add('sending')
 
-  // Optimistic loading state
   analysisBody.innerHTML = `<div class="chat-thinking">
     <span class="thinking-dot"></span><span class="thinking-dot"></span><span class="thinking-dot"></span>
   </div>`
@@ -578,7 +708,6 @@ async function sendChat() {
       return res.json()
     })()
 
-    // Render AI response
     if (data.response) {
       const paragraphs = data.response
         .split(/\n\n+/)
@@ -589,7 +718,6 @@ async function sendChat() {
       analysisBody.innerHTML = `<div class="analysis-text">${paragraphs}</div>`
     }
 
-    // Process actions
     let watchlistChanged = false
     const actionBadges = []
 
@@ -602,12 +730,12 @@ async function sendChat() {
         actionBadges.push(`<span class="action-badge remove">− ${esc(action.symbol)}</span>`)
       } else if (action.type === 'news_filter') {
         newsFilter = { keywords: action.keywords, label: action.label }
-        newsShown = 10
+        newsShown  = 10
         renderNews()
         actionBadges.push(`<span class="action-badge filter">News: ${esc(action.label)}</span>`)
       } else if (action.type === 'news_filter_clear') {
         newsFilter = null
-        newsShown = 10
+        newsShown  = 10
         renderNews()
         actionBadges.push(`<span class="action-badge clear">Filter cleared</span>`)
       }
@@ -619,7 +747,6 @@ async function sendChat() {
     }
 
     if (watchlistChanged) {
-      // Reload watchlist panel without a full page refresh
       try {
         const wl = await apiFetch('/api/watchlist')
         await renderWatchlist(wl.symbols ?? [])
@@ -629,7 +756,7 @@ async function sendChat() {
     analysisBody.innerHTML = `<div class="panel-error">⚠ ${esc(err.message)}</div>`
     toast(err.message, 'err')
   } finally {
-    input.disabled = false
+    input.disabled   = false
     sendBtn.disabled = false
     sendBtn.classList.remove('sending')
     input.focus()
@@ -655,16 +782,16 @@ async function loadAll() {
   // Indices
   try {
     const indices = indicesRes.status === 'fulfilled' ? indicesRes.value : null
+    lastIndices = indices
     renderIndexBar(indices)
     renderSummary(indices)
 
-    // Update subtitle
     if (indices?.length) {
       const sp = indices.find(q => q.symbol === '^GSPC')
       if (sp) {
-        const dir = sp.changePercent >= 0 ? '▲' : '▼'
+        const dir = (sp.changePercent ?? 0) >= 0 ? '▲' : '▼'
         document.getElementById('fd-subtitle').textContent =
-          `S&P 500 ${dir} ${fmtChange(sp.changePercent)} · ${new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}`
+          `S&P 500 ${dir} ${fmtChange(sp.changePercent ?? 0)} · ${new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}`
       }
     }
   } catch { /* individual error already rendered */ }
@@ -672,48 +799,60 @@ async function loadAll() {
   // Sectors
   try {
     renderSectors(sectorsRes.status === 'fulfilled' ? sectorsRes.value : null)
-  } catch { document.getElementById('sectors-body').innerHTML = `<div class="panel-error">⚠ Data unavailable</div>` }
+  } catch { document.getElementById('sectors-body').innerHTML = `<div class="panel-error">${S.errData}</div>` }
 
   // Watchlist
   try {
     const wl = watchlistRes.status === 'fulfilled' ? watchlistRes.value : { symbols: [] }
     await renderWatchlist(wl.symbols ?? [])
-  } catch { document.getElementById('watchlist-body').innerHTML = `<div class="panel-error">⚠ Data unavailable</div>` }
+  } catch { document.getElementById('watchlist-body').innerHTML = `<div class="panel-error">${S.errData}</div>` }
 
   // News
   try {
-    if (newsRes.status === 'fulfilled') {
-      newsData = newsRes.value ?? []
-    } else {
-      newsData = []
-    }
+    newsData = newsRes.status === 'fulfilled' ? (newsRes.value ?? []) : []
     renderNews()
-  } catch { document.getElementById('news-body').innerHTML = `<div class="panel-error">⚠ News unavailable</div>` }
+  } catch { document.getElementById('news-body').innerHTML = `<div class="panel-error">${S.errNews}</div>` }
 
-  // Movers + Trending (same data source)
+  // Movers + Trending (same data)
   try {
     const movers = moversRes.status === 'fulfilled' ? moversRes.value : null
+    lastMovers = movers
     renderMovers(movers)
     renderTrending(movers)
   } catch {
-    document.getElementById('movers-body').innerHTML = `<div class="panel-error">⚠ Data unavailable</div>`
-    document.getElementById('trending-body').innerHTML = `<div class="panel-error">⚠ Data unavailable</div>`
+    document.getElementById('movers-body').innerHTML   = `<div class="panel-error">${S.errData}</div>`
+    document.getElementById('trending-body').innerHTML = `<div class="panel-error">${S.errData}</div>`
   }
 
-  // Assets (independent fetch)
+  // Assets (independent)
   renderAssets()
 
-  // Update status
   lastRefresh = Date.now()
   updateStatus()
 }
 
+// ── Lang Toggle ───────────────────────────────────────────────────────────────
+
+document.querySelectorAll('.lang-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const lang = btn.dataset.lang
+    if (lang === currentLang) return
+    currentLang = lang
+    localStorage.setItem('fd-lang', lang)
+    applyI18n()
+  })
+})
+
 // ── Boot ──────────────────────────────────────────────────────────────────────
+
+// Restore saved language on page load
+document.querySelectorAll('.lang-btn').forEach(btn => {
+  btn.classList.toggle('active', btn.dataset.lang === currentLang)
+})
+document.getElementById('watchlist-input').placeholder = S.addTicker
+document.getElementById('chat-input').placeholder      = S.chatPlaceholder
 
 loadAll()
 loadAnalysis()
 
-// Auto-refresh every 60s
-setInterval(() => {
-  loadAll()
-}, 60_000)
+setInterval(() => { loadAll() }, 60_000)
