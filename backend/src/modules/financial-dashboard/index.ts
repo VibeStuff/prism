@@ -169,13 +169,18 @@ async function fetchYahooQuote(symbol: string): Promise<QuoteData> {
     const closes = (result.indicators?.quote?.[0]?.close ?? [])
         .filter((v): v is number => v !== null && typeof v === 'number')
 
+    const price = meta.regularMarketPrice
+    const prevClose = (meta as any).regularMarketPreviousClose ?? (meta as any).chartPreviousClose ?? closes[closes.length - 2] ?? price
+    const change = (meta as any).regularMarketChange ?? (price - prevClose)
+    const changePercent = (meta as any).regularMarketChangePercent ?? (prevClose ? ((price - prevClose) / prevClose) * 100 : 0)
+
     return {
         symbol: meta.symbol ?? symbol,
         longName: meta.longName ?? meta.shortName ?? symbol,
-        price: meta.regularMarketPrice,
-        change: meta.regularMarketChange ?? (meta.regularMarketPrice - meta.regularMarketPreviousClose),
-        changePercent: meta.regularMarketChangePercent,
-        previousClose: meta.regularMarketPreviousClose,
+        price,
+        change,
+        changePercent,
+        previousClose: prevClose,
         closingPrices: closes.slice(-5),
     }
 }
@@ -486,12 +491,21 @@ const FinancialDashboardModule: AppModule = {
         })
 
         // ── News ─────────────────────────────────────────────────────────────
+        const NEWS_FEEDS: Record<string, { url: string; defaultSource: string }> = {
+            en: { url: 'https://finance.yahoo.com/news/rss', defaultSource: 'Yahoo Finance' },
+            zh: { url: 'https://tw.stock.yahoo.com/rss',     defaultSource: 'Yahoo 股市' },
+        }
+
         server.get(`${prefix}/api/news`, { config: { public: true } } as never, async (_req, reply) => {
-            const cached = cacheGet<NewsItem[]>('news')
+            const lang = String((_req as any).query?.lang ?? 'en')
+            const feed = NEWS_FEEDS[lang] ?? NEWS_FEEDS.en
+            const cacheKey = `news:${lang}`
+
+            const cached = cacheGet<NewsItem[]>(cacheKey)
             if (cached) return cached
 
             try {
-                const res = await fetch('https://finance.yahoo.com/news/rss', {
+                const res = await fetch(feed.url, {
                     headers: { 'User-Agent': 'Mozilla/5.0 (compatible; Prism/1.0)' },
                     signal: AbortSignal.timeout(8000),
                 })
@@ -517,7 +531,7 @@ const FinancialDashboardModule: AppModule = {
                     const rawSource = item.source
                     const source = typeof rawSource === 'string'
                         ? rawSource
-                        : (rawSource?.['#text'] ?? 'Yahoo Finance')
+                        : (rawSource?.['#text'] ?? feed.defaultSource)
                     return {
                         title: String(item.title ?? ''),
                         link: String(item.link ?? ''),
@@ -527,7 +541,7 @@ const FinancialDashboardModule: AppModule = {
                     }
                 })
 
-                cacheSet('news', items)
+                cacheSet(cacheKey, items)
                 return items
             } catch (err) {
                 return reply.code(502).send({ error: 'Failed to fetch news', detail: String(err) })

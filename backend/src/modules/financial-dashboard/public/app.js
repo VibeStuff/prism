@@ -239,10 +239,26 @@ function applyI18n() {
     btn.classList.toggle('active', btn.dataset.lang === currentLang)
   })
 
-  // Re-render sections whose prose changes with lang
-  if (lastIndices) renderSummary(lastIndices)
-  if (lastMovers)  { renderMovers(lastMovers); renderTrending(lastMovers) }
+  // Re-render all sections whose content changes with lang
+  if (lastIndices) {
+    renderIndexBar(lastIndices)
+    renderSummary(lastIndices)
+
+    // Update subtitle with current locale
+    const sp = lastIndices.find(q => q.symbol === '^GSPC')
+    if (sp) {
+      const dir = (sp.changePercent ?? 0) >= 0 ? '▲' : '▼'
+      document.getElementById('fd-subtitle').textContent =
+        `S&P 500 ${dir} ${fmtChange(sp.changePercent ?? 0)} · ${new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}`
+    }
+  }
+  if (lastMovers) { renderMovers(lastMovers); renderTrending(lastMovers) }
   updateStatus()
+
+  // Re-fetch news from the localized feed
+  apiFetch(`/api/news?lang=${currentLang}`)
+    .then(items => { newsData = items ?? []; renderNews() })
+    .catch(() => { /* keep existing news if fetch fails */ })
 
   // Load the persisted analysis for the newly selected language
   loadAnalysis()
@@ -779,7 +795,7 @@ async function loadAll() {
     apiFetch('/api/indices'),
     apiFetch('/api/sectors'),
     apiFetch('/api/watchlist'),
-    apiFetch('/api/news'),
+    apiFetch(`/api/news?lang=${currentLang}`),
     apiFetch('/api/movers'),
   ])
 
@@ -849,12 +865,8 @@ document.querySelectorAll('.lang-btn').forEach(btn => {
 
 // ── Boot ──────────────────────────────────────────────────────────────────────
 
-// Restore saved language on page load
-document.querySelectorAll('.lang-btn').forEach(btn => {
-  btn.classList.toggle('active', btn.dataset.lang === currentLang)
-})
-document.getElementById('watchlist-input').placeholder = S.addTicker
-document.getElementById('chat-input').placeholder      = S.chatPlaceholder
+// Apply saved language immediately (sets all static labels, button states, placeholders)
+applyI18n()
 
 loadAll()
 loadAnalysis()
