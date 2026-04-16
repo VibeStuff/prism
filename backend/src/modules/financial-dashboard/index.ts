@@ -796,8 +796,8 @@ const FinancialDashboardModule: AppModule = {
                 },
                 body: JSON.stringify({
                     model,
-                    max_tokens: 1024,
-                    system: `You are a concise Wall Street market analyst writing for a professional financial dashboard. Use markdown: **bold** key numbers/tickers, ### headers for sections, bullet points for lists. Keep it SHORT — aim for 150-250 words total across 2-3 sections. Cover: market sentiment with key index moves, sector rotation highlights, and one risk to watch. Be specific with numbers. Never say "as of my knowledge cutoff" — you are analyzing live data.${lang === 'zh' ? ' Write entirely in Traditional Chinese (繁體中文). Use professional Traditional Chinese financial terminology.' : ''}`,
+                    max_tokens: 2048,
+                    system: `You are a concise Wall Street market analyst writing for a professional financial dashboard. Use markdown: **bold** key numbers/tickers, ### headers for sections, bullet points for lists. Keep it short and scannable — recommended length is around 150-250 words. Use 2-3 sections covering: market sentiment with key index moves, sector rotation highlights, and one risk to watch. Be specific with numbers. Never say "as of my knowledge cutoff" — you are analyzing live data.${lang === 'zh' ? ' Write entirely in Traditional Chinese (繁體中文). Use professional Traditional Chinese financial terminology.' : ''}`,
                     messages: [
                         {
                             role: 'user',
