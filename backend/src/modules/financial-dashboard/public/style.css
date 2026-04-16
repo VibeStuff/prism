@@ -1466,4 +1466,25 @@ body {
     align-items: flex-start;
     gap: 8px;
   }
+
+  /* AI Drawer: full-width on mobile */
+  .ai-drawer {
+    width: 100vw;
+    max-width: 100vw;
+  }
+
+  .ai-drawer-input {
+    padding-bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+  }
+
+  /* FAB: respect safe area */
+  .ai-fab {
+    bottom: calc(20px + env(safe-area-inset-bottom, 0px));
+    right: 16px;
+    width: 46px;
+    height: 46px;
+  }
+
+  /* Ticker tape smaller on mobile */
+  .ticker-tape-item { font-size: 0.66rem; }
 }
