@@ -65,7 +65,10 @@ interface SearchResult {
 
 async function fetchWebSearch(query: string, maxResults = 5): Promise<SearchResult[]> {
     const searxngUrl = process.env.SEARXNG_URL?.replace(/\/+$/, '')
-    if (!searxngUrl) throw new Error('SEARXNG_URL not configured')
+    if (!searxngUrl) {
+        console.log(`[${new Date().toISOString()}] [AI:search] [WARN] SEARXNG_URL not configured — skipping web search`)
+        throw new Error('SEARXNG_URL not configured')
+    }
 
     const params = new URLSearchParams({
         q: query,
@@ -74,10 +77,16 @@ async function fetchWebSearch(query: string, maxResults = 5): Promise<SearchResu
         language: 'en',
     })
 
-    const res = await fetch(`${searxngUrl}/search?${params}`, {
+    const url = `${searxngUrl}/search?${params}`
+    console.log(`[${new Date().toISOString()}] [AI:search] [INFO] Query: "${query}" → ${url}`)
+    const t0 = Date.now()
+
+    const res = await fetch(url, {
         headers: { Accept: 'application/json' },
         signal: AbortSignal.timeout(10000),
     })
+
+    console.log(`[${new Date().toISOString()}] [AI:search] [INFO] SearXNG responded ${res.status} in ${Date.now() - t0}ms`)
 
     if (!res.ok) throw new Error(`SearXNG returned ${res.status}`)
 
@@ -87,13 +96,14 @@ async function fetchWebSearch(query: string, maxResults = 5): Promise<SearchResu
     for (const item of (data.results ?? [])) {
         if (results.length >= maxResults) break
         const title = item.title?.trim()
-        const url = item.url?.trim()
+        const itemUrl = item.url?.trim()
         const snippet = item.content?.trim() ?? ''
-        if (title && url) {
-            results.push({ title, url, snippet })
+        if (title && itemUrl) {
+            results.push({ title, url: itemUrl, snippet })
         }
     }
 
+    console.log(`[${new Date().toISOString()}] [AI:search] [INFO] Parsed ${results.length}/${data.results?.length ?? 0} results`)
     return results
 }
 
@@ -692,21 +702,40 @@ const FinancialDashboardModule: AppModule = {
         })
 
         // ── AI Analysis: helper to generate fresh analysis ───────────────────
+        const aiLog = (level: 'INFO' | 'WARN' | 'ERROR', context: string, msg: string, detail?: unknown) => {
+            const ts = new Date().toISOString()
+            const prefix = `[${ts}] [AI:${context}] [${level}]`
+            if (detail !== undefined) {
+                console.log(`${prefix} ${msg}`, typeof detail === 'string' ? detail : JSON.stringify(detail, null, 2))
+            } else {
+                console.log(`${prefix} ${msg}`)
+            }
+        }
+
         async function generateAnalysis(lang: string): Promise<PersistedAnalysis> {
+            const t0 = Date.now()
+            aiLog('INFO', 'analysis', `Starting analysis generation (lang=${lang})`)
+
             const apiKey = process.env.ANTHROPIC_API_KEY
-            if (!apiKey) throw Object.assign(new Error('ANTHROPIC_API_KEY not configured'), { statusCode: 503 })
+            if (!apiKey) {
+                aiLog('ERROR', 'analysis', 'ANTHROPIC_API_KEY not configured')
+                throw Object.assign(new Error('ANTHROPIC_API_KEY not configured'), { statusCode: 503 })
+            }
 
             // Warm the market data cache if cold
             const needsIndices = !cacheGet('indices')
             const needsSectors = !cacheGet('sectors')
             const needsMovers = !cacheGet('movers')
+            aiLog('INFO', 'analysis', `Cache status — indices: ${needsIndices ? 'COLD' : 'warm'}, sectors: ${needsSectors ? 'COLD' : 'warm'}, movers: ${needsMovers ? 'COLD' : 'warm'}`)
 
             if (needsIndices || needsSectors || needsMovers) {
+                const cacheT0 = Date.now()
                 await Promise.allSettled([
                     needsIndices
                         ? Promise.allSettled(INDEX_SYMBOLS.map(fetchYahooQuote)).then(results => {
                             const data = results.map(r => r.status === 'fulfilled' ? r.value : null).filter((q): q is QuoteData => q !== null)
                             cacheSet('indices', data)
+                            aiLog('INFO', 'analysis', `Fetched ${data.length}/${INDEX_SYMBOLS.length} indices`)
                         })
                         : Promise.resolve(),
                     needsSectors
@@ -717,6 +746,7 @@ const FinancialDashboardModule: AppModule = {
                                 .filter((q): q is QuoteData => q !== null)
                                 .sort((a, b) => b.changePercent - a.changePercent)
                             cacheSet('sectors', data)
+                            aiLog('INFO', 'analysis', `Fetched ${data.length}/${etfs.length} sectors`)
                         })
                         : Promise.resolve(),
                     needsMovers
@@ -726,24 +756,33 @@ const FinancialDashboardModule: AppModule = {
                                 .filter((q): q is QuoteData => q !== null)
                                 .sort((a, b) => Math.abs(b.changePercent) - Math.abs(a.changePercent))
                             cacheSet('movers', { gainers: quotes.filter(q => q.changePercent >= 0).slice(0, 5), losers: quotes.filter(q => q.changePercent < 0).slice(0, 5) })
+                            aiLog('INFO', 'analysis', `Fetched ${quotes.length}/${MOVERS_SYMBOLS.length} movers`)
                         })
                         : Promise.resolve(),
                 ])
+                aiLog('INFO', 'analysis', `Market data warm-up took ${Date.now() - cacheT0}ms`)
             }
 
-            const snapshot = (() => { try { return buildMarketSnapshot() } catch { return '(market snapshot unavailable)' } })()
+            const snapshot = (() => { try { return buildMarketSnapshot() } catch (e) { aiLog('WARN', 'analysis', 'buildMarketSnapshot failed', e); return '(market snapshot unavailable)' } })()
+            aiLog('INFO', 'analysis', `Snapshot built (${snapshot.length} chars)`)
 
             // Fetch web search context for richer analysis
             let searchContext = ''
             try {
+                aiLog('INFO', 'analysis', 'Fetching web search context…')
                 const searchResults = await fetchWebSearch('stock market today financial news', 5)
+                aiLog('INFO', 'analysis', `Web search returned ${searchResults.length} results`)
                 if (searchResults.length) {
                     searchContext = '\n\n=== RECENT WEB HEADLINES ===\n' +
                         searchResults.map(r => `• ${r.title}: ${r.snippet}`).join('\n')
                 }
-            } catch {
-                // non-fatal — proceed without search context
+            } catch (err) {
+                aiLog('WARN', 'analysis', 'Web search failed (non-fatal)', String(err))
             }
+
+            const model = process.env.FINANCIAL_DASHBOARD_MODEL ?? 'claude-sonnet-4-6'
+            aiLog('INFO', 'analysis', `Calling Anthropic API (model=${model})…`)
+            const apiT0 = Date.now()
 
             const response = await fetch('https://api.anthropic.com/v1/messages', {
                 method: 'POST',
@@ -753,7 +792,7 @@ const FinancialDashboardModule: AppModule = {
                     'anthropic-version': '2023-06-01',
                 },
                 body: JSON.stringify({
-                    model: process.env.FINANCIAL_DASHBOARD_MODEL ?? 'claude-sonnet-4-6',
+                    model,
                     max_tokens: 600,
                     system: `You are a concise Wall Street market analyst writing for a professional financial dashboard. Write in tight, punchy prose — no bullet points, no headers, no markdown formatting. 3-4 short paragraphs max. Cover: overall market sentiment, notable sector moves, top movers context, and one key risk or theme to watch. Be specific with numbers from the data provided. If recent web headlines are provided, incorporate relevant context about market-moving events into your analysis. Never say "as of my knowledge cutoff" — you are analyzing live data being handed to you.${lang === 'zh' ? ' Write entirely in Traditional Chinese (繁體中文). Use professional Traditional Chinese financial terminology.' : ''}`,
                     messages: [
@@ -766,13 +805,18 @@ const FinancialDashboardModule: AppModule = {
                 signal: AbortSignal.timeout(30000),
             })
 
+            aiLog('INFO', 'analysis', `Anthropic API responded ${response.status} in ${Date.now() - apiT0}ms`)
+
             if (!response.ok) {
                 const err = await response.json().catch(() => ({}))
+                aiLog('ERROR', 'analysis', `Anthropic API error ${response.status}`, err)
                 throw Object.assign(new Error('Anthropic API error'), { statusCode: 502, detail: err })
             }
 
-            const data = await response.json() as { content?: Array<{ text?: string }> }
+            const data = await response.json() as { content?: Array<{ text?: string }>; usage?: { input_tokens?: number; output_tokens?: number } }
             const text = data.content?.[0]?.text ?? ''
+            aiLog('INFO', 'analysis', `Analysis generated — ${text.length} chars, tokens: in=${data.usage?.input_tokens ?? '?'} out=${data.usage?.output_tokens ?? '?'}, total time ${Date.now() - t0}ms`)
+
             const result: PersistedAnalysis = { analysis: text, generatedAt: new Date().toISOString() }
             writeAnalysis(lang, result)
             return result
@@ -815,8 +859,13 @@ const FinancialDashboardModule: AppModule = {
                 const userMessage = String(req.body?.message ?? '').trim()
                 if (!userMessage) return reply.code(400).send({ error: 'message is required' })
 
-                const snapshot = (() => { try { return buildMarketSnapshot() } catch { return '(market snapshot unavailable)' } })()
+                const chatT0 = Date.now()
+                aiLog('INFO', 'chat', `User message: "${userMessage.slice(0, 100)}"${userMessage.length > 100 ? '…' : ''}`)
+                aiLog('INFO', 'chat', `Chat history: ${chatHistory.length} messages`)
+
+                const snapshot = (() => { try { return buildMarketSnapshot() } catch (e) { aiLog('WARN', 'chat', 'buildMarketSnapshot failed', e); return '(market snapshot unavailable)' } })()
                 const watchlist = readWatchlist()
+                aiLog('INFO', 'chat', `Context — snapshot: ${snapshot.length} chars, watchlist: [${watchlist.join(', ')}]`)
 
                 const systemPrompt = `You are a helpful financial dashboard assistant with access to tools to manage the user's experience. You can add or remove stocks from their watchlist, filter the news feed, and search the web for current financial information.
 
@@ -838,6 +887,8 @@ Keep responses concise — 1-3 sentences confirming what you did and any relevan
                 const MAX_ITER = 6
 
                 for (let i = 0; i < MAX_ITER; i++) {
+                    aiLog('INFO', 'chat', `Iteration ${i + 1}/${MAX_ITER} — sending ${messages.length} messages to API`)
+                    const iterT0 = Date.now()
                     const res = await fetch('https://api.anthropic.com/v1/messages', {
                         method: 'POST',
                         headers: {
@@ -857,6 +908,7 @@ Keep responses concise — 1-3 sentences confirming what you did and any relevan
 
                     if (!res.ok) {
                         const err = await res.json().catch(() => ({}))
+                        aiLog('ERROR', 'chat', `API error ${res.status} on iteration ${i + 1}`, err)
                         return reply.code(502).send({ error: 'Anthropic API error', detail: err })
                     }
 
@@ -865,6 +917,8 @@ Keep responses concise — 1-3 sentences confirming what you did and any relevan
                         content: ContentBlock[]
                     }
 
+                    aiLog('INFO', 'chat', `API responded in ${Date.now() - iterT0}ms — stop_reason=${data.stop_reason}, blocks=${data.content.length}`)
+
                     // Push assistant turn
                     messages.push({ role: 'assistant', content: data.content })
 
@@ -872,19 +926,28 @@ Keep responses concise — 1-3 sentences confirming what you did and any relevan
                     const textBlock = data.content.find((b): b is TextBlock => b.type === 'text')
                     if (textBlock) responseText = textBlock.text
 
-                    if (data.stop_reason === 'end_turn') break
+                    if (data.stop_reason === 'end_turn') {
+                        aiLog('INFO', 'chat', `End turn — response: "${responseText.slice(0, 80)}${responseText.length > 80 ? '…' : ''}"`)
+                        break
+                    }
 
                     if (data.stop_reason === 'tool_use') {
                         const toolUses = data.content.filter((b): b is ToolUseBlock => b.type === 'tool_use')
+                        aiLog('INFO', 'chat', `Tool calls: ${toolUses.map(t => `${t.name}(${JSON.stringify(t.input)})`).join(', ')}`)
                         const toolResults = await Promise.all(
-                            toolUses.map(async (block) => ({
-                                type: 'tool_result' as const,
-                                tool_use_id: block.id,
-                                content: await executeTool(block.name, block.input, actions),
-                            })),
+                            toolUses.map(async (block) => {
+                                const result = await executeTool(block.name, block.input, actions)
+                                aiLog('INFO', 'chat', `Tool ${block.name} → ${result.slice(0, 120)}`)
+                                return {
+                                    type: 'tool_result' as const,
+                                    tool_use_id: block.id,
+                                    content: result,
+                                }
+                            }),
                         )
                         messages.push({ role: 'user', content: toolResults })
                     } else {
+                        aiLog('WARN', 'chat', `Unexpected stop_reason: ${data.stop_reason}`)
                         break
                     }
                 }
@@ -894,6 +957,7 @@ Keep responses concise — 1-3 sentences confirming what you did and any relevan
                     appendChatHistory({ role: 'assistant', content: responseText })
                 }
 
+                aiLog('INFO', 'chat', `Chat complete — ${actions.length} actions, total time ${Date.now() - chatT0}ms`)
                 return { response: responseText, actions }
             },
         )
