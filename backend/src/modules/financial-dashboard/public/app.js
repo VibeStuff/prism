@@ -829,7 +829,62 @@ function renderMovers(movers) {
   </div>`
 }
 
-// ── Market News (Breaking Headlines) ─────────────────────────────────────────
+// ── Market News (thespread.news — headlines, tweets, substacks) ─────────────
+
+function renderMarketChips(markets) {
+  if (!markets || !markets.length) return ''
+  return `<div class="market-chips">${markets.map(m => {
+    const dir = m.direction === 'down' ? 'down' : 'up'
+    const arrow = dir === 'down' ? '↓' : '↑'
+    return `<a class="market-chip" href="${esc(m.url)}" target="_blank" rel="noopener noreferrer" title="${esc(m.question)} — Polymarket">
+      <span class="market-chip-arrow ${dir}">${arrow}</span>
+      <span class="market-chip-pct">${m.pct}%</span>
+      <span class="market-chip-q">${esc(m.question)}</span>
+    </a>`
+  }).join('')}</div>`
+}
+
+function renderTweetCard(item) {
+  const eng = item.engagement || {}
+  return `<div class="spread-card tweet-card">
+    ${item.sourceLogo ? `<img class="tweet-card-avatar" alt="" src="${esc(item.sourceLogo)}">` : `<div class="tweet-card-avatar tweet-card-avatar-fallback">${esc((item.authorName || '?').charAt(0))}</div>`}
+    <div class="tweet-card-content">
+      <div class="tweet-card-header">
+        <a class="tweet-card-displayname" href="${esc(item.link)}" target="_blank" rel="noopener noreferrer">${esc(item.authorName || item.source)}</a>
+        ${item.authorHandle ? `<span class="tweet-card-handle">@${esc(item.authorHandle)}</span>` : ''}
+        <span class="tweet-card-dot">·</span>
+        <a class="tweet-card-time" href="${esc(item.link)}" target="_blank" rel="noopener noreferrer">${esc(timeAgo(item.pubDate))}</a>
+      </div>
+      <a class="tweet-card-text-link" href="${esc(item.link)}" target="_blank" rel="noopener noreferrer">
+        <div class="tweet-card-text">${esc(item.text || item.title)}</div>
+      </a>
+      ${renderMarketChips(item.markets)}
+      <div class="tweet-card-engagement">
+        <span class="tweet-card-stat">💬 ${eng.replies || 0}</span>
+        <span class="tweet-card-stat">🔁 ${eng.retweets || 0}</span>
+        <span class="tweet-card-stat">❤ ${eng.likes || 0}</span>
+      </div>
+    </div>
+  </div>`
+}
+
+function renderHeadlineCard(item) {
+  return `<div class="spread-card headline-card">
+    ${item.sourceLogo ? `<img class="headline-card-logo" alt="" src="${esc(item.sourceLogo)}">` : `<div class="headline-card-logo headline-card-logo-fallback">${esc((item.source || '?').charAt(0))}</div>`}
+    <div class="headline-card-content">
+      <div class="headline-card-header">
+        <span class="headline-card-source">${esc(item.source)}</span>
+        <span class="headline-card-dot">·</span>
+        <span class="headline-card-time">${esc(timeAgo(item.pubDate))}</span>
+      </div>
+      <a class="headline-card-title-link" href="${esc(item.link)}" target="_blank" rel="noopener noreferrer">
+        <div class="headline-card-title">${esc(item.title)}</div>
+        ${item.summary ? `<div class="headline-card-summary">${esc(item.summary)}</div>` : ''}
+      </a>
+      ${renderMarketChips(item.markets)}
+    </div>
+  </div>`
+}
 
 function renderOracle(items) {
   const body = document.getElementById('oracle-body')
@@ -838,23 +893,11 @@ function renderOracle(items) {
     return
   }
 
-  body.innerHTML = `<div class="oracle-list">${
-    items.slice(0, 6).map(item =>
-      `<div class="oracle-item">
-        <a class="oracle-title-link" href="${esc(item.link)}" target="_blank" rel="noopener noreferrer">
-          <div class="oracle-title">${esc(item.title)}</div>
-          ${item.excerpt ? `<div class="oracle-excerpt">${esc(item.excerpt)}</div>` : ''}
-          <div class="oracle-meta">${esc(timeAgo(item.pubDate))}</div>
-        </a>
-        ${item.marketUrl ? `
-          <a class="oracle-market" href="${esc(item.marketUrl)}" target="_blank" rel="noopener noreferrer" title="View prediction market on Polymarket">
-            <span class="oracle-market-icon">🔮</span>
-            <span class="oracle-market-title">${esc(item.marketTitle || 'View market')}</span>
-          </a>
-        ` : ''}
-      </div>`
+  body.innerHTML = `<div class="spread-feed">${
+    items.slice(0, 25).map(item =>
+      item.kind === 'tweet' ? renderTweetCard(item) : renderHeadlineCard(item)
     ).join('')
-  }</div>`
+  }<div class="spread-attribution">via <a href="https://thespread.news" target="_blank" rel="noopener noreferrer">thespread.news</a></div></div>`
 }
 
 ;(function initNewsSourceToggle() {

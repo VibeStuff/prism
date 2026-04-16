@@ -279,11 +279,32 @@ function isSummaryStale(generatedAt: string | null): boolean {
 
 // ─── Oracle translation cache ────────────────────────────────────────────────
 
+interface MarketChip {
+    question: string
+    url: string
+    pct: number           // 0-100, YES outcome price
+    direction: 'up' | 'down'  // correlation: how this story moves the market
+    volume: number
+    icon?: string
+}
+
 interface OracleItem {
-    title: string
+    kind: 'headline' | 'tweet' | 'substack'
+    id: number
+    title: string            // headline title, or first line of tweet
+    text?: string            // full tweet text
+    summary?: string         // headline/substack summary
+    source: string           // "Bloomberg", "Polymarket", "Ars Technica"
+    sourceLogo?: string
+    authorHandle?: string    // tweet only
+    authorName?: string      // tweet only
     link: string
-    excerpt: string
-    pubDate: string
+    pubDate: string          // ISO timestamp
+    image?: string
+    engagement?: { likes: number; retweets: number; replies: number }
+    markets: MarketChip[]
+    // legacy fields retained for backwards compat with older cached payloads
+    excerpt?: string
     marketUrl?: string
     marketTitle?: string
 }
@@ -907,23 +928,114 @@ const FinancialDashboardModule: AppModule = {
             }
         })
 
-        // ── Market News (Polymarket Oracle — breaking news w/ prediction markets) ─
-        // Turn a polymarket.com/event/slug-name URL into a readable title
-        const slugToTitle = (url: string): string => {
-            const m = url.match(/polymarket\.com\/(?:event|market)\/([^?#/]+)/)
-            if (!m) return ''
-            return m[1]
-                .split('-')
-                .map(w => w.length <= 3 ? w.toUpperCase() : w.charAt(0).toUpperCase() + w.slice(1))
-                .join(' ')
+        // ── Market News (via thespread.news API) ──────────────────────────────
+        // thespread.news aggregates finance headlines, tweets, and substacks and
+        // pre-attaches related Polymarket prediction markets to every item.
+        const SPREAD_API_BASE = 'https://thespreadapi-production-1feb.up.railway.app'
+
+        // Parse "[\"0.0435\", \"0.9565\"]" → 0.0435 (YES price at index 0)
+        const parseYesPrice = (raw: unknown): number => {
+            try {
+                const arr = typeof raw === 'string' ? JSON.parse(raw) : raw
+                if (Array.isArray(arr) && arr.length >= 1) return parseFloat(String(arr[0])) || 0
+            } catch { /* fall through */ }
+            return 0
         }
 
-        // Extract the first prediction-market link from HTML content
-        const extractMarketLink = (html: string): { marketUrl: string; marketTitle: string } | null => {
-            const match = html.match(/https?:\/\/(?:www\.)?polymarket\.com\/(?:event|market)\/[a-zA-Z0-9-]+/)
-            if (!match) return null
-            const marketUrl = match[0]
-            return { marketUrl, marketTitle: slugToTitle(marketUrl) }
+        interface SpreadMarket {
+            question?: string
+            url?: string
+            icon?: string
+            outcome_prices?: string
+            volume?: number
+            correlation?: string
+        }
+
+        const normalizeMarkets = (raw: unknown): MarketChip[] => {
+            if (!Array.isArray(raw)) return []
+            return (raw as SpreadMarket[]).slice(0, 3).map(m => ({
+                question: String(m.question ?? ''),
+                url: String(m.url ?? ''),
+                pct: Math.round(parseYesPrice(m.outcome_prices) * 100),
+                direction: m.correlation === 'down' ? 'down' : 'up',
+                volume: typeof m.volume === 'number' ? m.volume : 0,
+                ...(m.icon ? { icon: String(m.icon) } : {}),
+            })).filter(c => c.question && c.url)
+        }
+
+        interface SpreadHeadline {
+            id: number
+            title: string
+            link: string
+            source: string
+            provider_logo?: string
+            article_image?: string
+            summary?: string
+            published_at: string
+            markets?: SpreadMarket[]
+        }
+
+        interface SpreadTweet {
+            id: number
+            tweet_id?: string
+            author_handle: string
+            author_name: string
+            text: string
+            created_at: string
+            likes?: number
+            retweets?: number
+            replies?: number
+            markets?: SpreadMarket[]
+        }
+
+        interface SpreadSubstack {
+            id: number
+            title: string
+            link: string
+            author?: string
+            source: string
+            provider_logo?: string
+            article_image?: string
+            summary?: string
+            published_at: string
+            markets?: SpreadMarket[]
+        }
+
+        const fetchSpread = async <T>(path: string): Promise<T[]> => {
+            const res = await fetch(`${SPREAD_API_BASE}${path}`, {
+                headers: {
+                    'User-Agent': 'Mozilla/5.0 (compatible; Prism/1.0)',
+                    'Accept': 'application/json',
+                    'Origin': 'https://thespread.news',
+                },
+                signal: AbortSignal.timeout(8000),
+            })
+            if (!res.ok) throw new Error(`${path} returned ${res.status}`)
+            return res.json() as Promise<T[]>
+        }
+
+        // Look up a Twitter avatar by handle from the /api/sources list
+        let sourceLogoCache: Map<string, string> | null = null
+        let sourceLogoCacheAt = 0
+        const getSourceLogos = async (): Promise<Map<string, string>> => {
+            if (sourceLogoCache && Date.now() - sourceLogoCacheAt < 10 * 60_000) {
+                return sourceLogoCache
+            }
+            try {
+                const sources = await fetchSpread<{ handle?: string; name?: string; logo_url?: string }>('/api/sources?limit=200')
+                const map = new Map<string, string>()
+                for (const s of sources) {
+                    if (s.logo_url) {
+                        if (s.handle) map.set(s.handle.toLowerCase(), s.logo_url)
+                        if (s.name) map.set(s.name.toLowerCase(), s.logo_url)
+                    }
+                }
+                sourceLogoCache = map
+                sourceLogoCacheAt = Date.now()
+                return map
+            } catch {
+                return sourceLogoCache ?? new Map()
+            }
         }
 
         server.get(`${prefix}/api/oracle`, { config: { public: true } } as never, async (_req, reply) => {
@@ -933,57 +1045,79 @@ const FinancialDashboardModule: AppModule = {
             const cached = cacheGet<OracleItem[]>(cacheKey)
             if (cached) return cached
 
-            // Always fetch the English feed first (shared across locales)
-            let items = cacheGet<OracleItem[]>('oracle:en')
-            if (!items) {
-                try {
-                    const res = await fetch('https://news.polymarket.com/feed', {
-                        headers: { 'User-Agent': 'Mozilla/5.0 (compatible; Prism/1.0)' },
-                        signal: AbortSignal.timeout(8000),
-                    })
-                    if (!res.ok) throw new Error(`Polymarket feed returned ${res.status}`)
+            try {
+                const [headlinesResult, tweetsResult, substacksResult, logos] = await Promise.all([
+                    fetchSpread<SpreadHeadline>('/api/headlines?limit=25').catch(() => [] as SpreadHeadline[]),
+                    fetchSpread<SpreadTweet>('/api/tweets?limit=25').catch(() => [] as SpreadTweet[]),
+                    fetchSpread<SpreadSubstack>('/api/substacks?limit=10').catch(() => [] as SpreadSubstack[]),
+                    getSourceLogos(),
+                ])
 
-                    const xml = await res.text()
-                    const parser = new XMLParser({ ignoreAttributes: false })
-                    const parsed = parser.parse(xml) as {
-                        rss?: {
-                            channel?: {
-                                item?: Array<{
-                                    title?: string
-                                    link?: string
-                                    description?: string
-                                    pubDate?: string
-                                    'content:encoded'?: string
-                                }>
-                            }
-                        }
-                    }
-
-                    items = (parsed?.rss?.channel?.item ?? []).slice(0, 8).map(item => {
-                        const encoded = String(item['content:encoded'] ?? '')
-                        const market = extractMarketLink(encoded)
-                        return {
-                            title: String(item.title ?? ''),
-                            link: String(item.link ?? ''),
-                            excerpt: String(item.description ?? '').replace(/<[^>]+>/g, '').replace(/&nbsp;/g, ' ').trim().slice(0, 160),
-                            pubDate: String(item.pubDate ?? ''),
-                            ...(market ? { marketUrl: market.marketUrl, marketTitle: market.marketTitle } : {}),
-                        }
-                    }).sort((a, b) => new Date(b.pubDate).getTime() - new Date(a.pubDate).getTime())
-
-                    cacheSet('oracle:en', items)
-                } catch (err) {
-                    return reply.code(502).send({ error: 'Failed to fetch market news', detail: String(err) })
+                if (!headlinesResult.length && !tweetsResult.length && !substacksResult.length) {
+                    return reply.code(502).send({ error: 'Spread API returned no data' })
                 }
-            }
 
-            if (lang === 'zh') {
-                const translated = await translateOracleItems(items)
-                cacheSet('oracle:zh', translated)
-                return translated
-            }
+                const headlineItems: OracleItem[] = headlinesResult.map(h => ({
+                    kind: 'headline' as const,
+                    id: h.id,
+                    title: String(h.title ?? ''),
+                    summary: String(h.summary ?? ''),
+                    source: String(h.source ?? ''),
+                    sourceLogo: h.provider_logo,
+                    link: String(h.link ?? ''),
+                    pubDate: String(h.published_at ?? ''),
+                    image: h.article_image,
+                    markets: normalizeMarkets(h.markets),
+                }))
 
-            return items
+                const tweetItems: OracleItem[] = tweetsResult.map(t => {
+                    const handle = String(t.author_handle ?? '')
+                    const logo = handle ? logos.get(handle.toLowerCase()) : undefined
+                    const tweetUrl = t.tweet_id ? `https://x.com/${handle}/status/${t.tweet_id}` : `https://x.com/${handle}`
+                    const text = String(t.text ?? '').replace(/https:\/\/t\.co\/\S+/g, '').trim()
+                    return {
+                        kind: 'tweet' as const,
+                        id: t.id,
+                        title: text.slice(0, 120),
+                        text,
+                        source: String(t.author_name ?? handle),
+                        sourceLogo: logo,
+                        authorHandle: handle,
+                        authorName: String(t.author_name ?? handle),
+                        link: tweetUrl,
+                        pubDate: String(t.created_at ?? ''),
+                        engagement: {
+                            likes: typeof t.likes === 'number' ? t.likes : 0,
+                            retweets: typeof t.retweets === 'number' ? t.retweets : 0,
+                            replies: typeof t.replies === 'number' ? t.replies : 0,
+                        },
+                        markets: normalizeMarkets(t.markets),
+                    }
+                })
+
+                const substackItems: OracleItem[] = substacksResult.map(s => ({
+                    kind: 'substack' as const,
+                    id: s.id,
+                    title: String(s.title ?? ''),
+                    summary: String(s.summary ?? ''),
+                    source: String(s.source ?? ''),
+                    sourceLogo: s.provider_logo,
+                    authorName: s.author,
+                    link: String(s.link ?? ''),
+                    pubDate: String(s.published_at ?? ''),
+                    image: s.article_image,
+                    markets: normalizeMarkets(s.markets),
+                }))
+
+                const items = [...headlineItems, ...tweetItems, ...substackItems]
+                    .sort((a, b) => new Date(b.pubDate).getTime() - new Date(a.pubDate).getTime())
+                    .slice(0, 40)
+
+                cacheSet(cacheKey, items)
+                return items
+            } catch (err) {
+                return reply.code(502).send({ error: 'Failed to fetch spread feed', detail: String(err) })
+            }
         })
 
         // ── AI Analysis: helper to generate fresh analysis ───────────────────

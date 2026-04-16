@@ -660,65 +660,206 @@ body {
 }
 
 /* ═══════════════════════════════════════════════════════
-   THE ORACLE (Substack Feed)
+   SPREAD FEED (thespread.news — headlines, tweets, markets)
 ═══════════════════════════════════════════════════════ */
-.oracle-list {
+.spread-feed {
   display: flex;
   flex-direction: column;
-  min-width: 0;
-  overflow: hidden;
-}
-
-.oracle-item {
-  padding: 10px 6px;
-  border-bottom: 1px solid var(--border);
-  display: block;
-  border-radius: 6px;
-  min-width: 0;
-  overflow: hidden;
-  transition: background var(--t) var(--ease);
-}
-
-.oracle-item:last-child { border-bottom: none; }
-.oracle-item:hover { background: var(--amber-light); }
-
-.oracle-title-link {
-  display: block;
-  text-decoration: none;
-  cursor: pointer;
+  gap: 10px;
   min-width: 0;
 }
 
-.oracle-market {
-  display: inline-flex;
+.spread-card {
+  display: flex;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-card, #fffbf0);
+  min-width: 0;
+  transition: border-color var(--t) var(--ease), background var(--t) var(--ease);
+}
+
+.spread-card:hover { border-color: var(--amber, #f0a500); }
+
+/* ── Tweet card ── */
+.tweet-card-avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  object-fit: cover;
+  background: var(--border);
+}
+
+.tweet-card-avatar-fallback {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  font-size: 0.9rem;
+  color: var(--text-dark);
+  background: var(--amber-light);
+}
+
+.tweet-card-content { flex: 1; min-width: 0; }
+
+.tweet-card-header {
+  display: flex;
   align-items: center;
   gap: 4px;
-  margin-top: 6px;
-  padding: 3px 8px;
+  font-size: 0.75rem;
+  flex-wrap: wrap;
+  margin-bottom: 4px;
+}
+
+.tweet-card-displayname {
+  font-weight: 600;
+  color: var(--text-dark);
+  text-decoration: none;
+}
+.tweet-card-displayname:hover { text-decoration: underline; }
+
+.tweet-card-handle, .tweet-card-dot, .tweet-card-time {
+  color: var(--text-muted);
+  font-size: 0.72rem;
+}
+.tweet-card-time { text-decoration: none; }
+.tweet-card-time:hover { text-decoration: underline; }
+
+.tweet-card-text-link { text-decoration: none; color: inherit; display: block; }
+
+.tweet-card-text {
+  font-size: 0.82rem;
+  line-height: 1.45;
+  color: var(--text-dark);
+  word-break: break-word;
+  white-space: pre-wrap;
+}
+
+.tweet-card-engagement {
+  display: flex;
+  gap: 18px;
+  margin-top: 8px;
+  color: var(--text-muted);
+  font-size: 0.68rem;
+}
+
+.tweet-card-stat { display: inline-flex; align-items: center; gap: 3px; }
+
+/* ── Headline card ── */
+.headline-card-logo {
+  width: 36px;
+  height: 36px;
+  border-radius: 6px;
+  flex-shrink: 0;
+  object-fit: cover;
+  background: var(--border);
+}
+
+.headline-card-logo-fallback {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 0.95rem;
+  color: var(--text-dark);
+  background: var(--amber-light);
+}
+
+.headline-card-content { flex: 1; min-width: 0; }
+
+.headline-card-header {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  margin-bottom: 4px;
+}
+
+.headline-card-source { font-weight: 600; color: var(--text-mid); }
+
+.headline-card-title-link { text-decoration: none; color: inherit; display: block; }
+
+.headline-card-title {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-dark);
+  line-height: 1.35;
+  margin-bottom: 4px;
+  word-break: break-word;
+}
+.headline-card-title-link:hover .headline-card-title { color: var(--amber, #f0a500); }
+
+.headline-card-summary {
+  font-size: 0.74rem;
+  color: var(--text-mid);
+  line-height: 1.45;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* ── Market chips (shared between tweet & headline cards) ── */
+.market-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.market-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 9px;
   background: var(--amber-light, #fff4e0);
   border: 1px solid var(--amber, #f0a500);
   border-radius: 999px;
-  font-size: 0.65rem;
+  font-size: 0.68rem;
   color: var(--text-dark);
   text-decoration: none;
   max-width: 100%;
   overflow: hidden;
-  transition: background var(--t) var(--ease);
+  transition: background var(--t) var(--ease), color var(--t) var(--ease);
 }
 
-.oracle-market:hover {
+.market-chip:hover {
   background: var(--amber, #f0a500);
   color: #fff;
 }
 
-.oracle-market-icon { font-size: 0.7rem; flex-shrink: 0; }
+.market-chip-arrow {
+  font-weight: 700;
+  font-size: 0.75rem;
+  flex-shrink: 0;
+}
+.market-chip-arrow.up   { color: #0a7a33; }
+.market-chip-arrow.down { color: #c12b2b; }
+.market-chip:hover .market-chip-arrow { color: inherit; }
 
-.oracle-market-title {
+.market-chip-pct {
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.market-chip-q {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-weight: 500;
+  max-width: 280px;
 }
+
+.spread-attribution {
+  text-align: center;
+  padding-top: 6px;
+  font-size: 0.65rem;
+  color: var(--text-muted);
+}
+.spread-attribution a { color: var(--text-mid); text-decoration: none; }
+.spread-attribution a:hover { text-decoration: underline; }
 
 .oracle-title {
   font-size: 0.8rem;
