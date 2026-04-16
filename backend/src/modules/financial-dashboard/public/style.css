@@ -1153,6 +1153,7 @@ body {
   letter-spacing: 0.06em;
   color: var(--text-muted);
   transition: background var(--t);
+  gap: 8px;
 }
 
 .analysis-toggle:hover {
@@ -1163,6 +1164,7 @@ body {
   display: flex;
   align-items: center;
   gap: 6px;
+  flex-shrink: 0;
 }
 
 .analysis-chevron {

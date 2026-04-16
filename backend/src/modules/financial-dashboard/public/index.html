@@ -124,15 +124,15 @@
 
     <!-- Collapsible Market Analysis section -->
     <div class="ai-drawer-analysis">
-      <button class="analysis-toggle" id="analysis-toggle" type="button">
+      <div class="analysis-toggle" id="analysis-toggle" role="button" tabindex="0">
         <span id="analysis-toggle-label">Market Analysis</span>
         <div class="analysis-toggle-right">
-          <button id="analysis-refresh-btn" class="btn-refresh" title="Refresh analysis">↺</button>
+          <button id="analysis-refresh-btn" class="btn-refresh" type="button" title="Refresh analysis">↺</button>
           <svg class="analysis-chevron" width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
             <path d="M3 4.5l3 3 3-3"/>
           </svg>
         </div>
-      </button>
+      </div>
       <div class="analysis-collapsible" id="analysis-collapsible">
         <div id="analysis-body"><div class="skeleton" style="height:80px;border-radius:8px"></div></div>
       </div>
