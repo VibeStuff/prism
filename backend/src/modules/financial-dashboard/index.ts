@@ -66,7 +66,7 @@ interface SearchResult {
 async function fetchWebSearch(query: string, maxResults = 5): Promise<SearchResult[]> {
     const searxngUrl = process.env.SEARXNG_URL?.replace(/\/+$/, '')
     if (!searxngUrl) {
-        console.log(`[${new Date().toISOString()}] [AI:search] [WARN] SEARXNG_URL not configured — skipping web search`)
+        console.error(`[AI:search] SEARXNG_URL not configured — skipping web search`)
         throw new Error('SEARXNG_URL not configured')
     }
 
@@ -78,7 +78,7 @@ async function fetchWebSearch(query: string, maxResults = 5): Promise<SearchResu
     })
 
     const url = `${searxngUrl}/search?${params}`
-    console.log(`[${new Date().toISOString()}] [AI:search] [INFO] Query: "${query}" → ${url}`)
+    console.error(`[AI:search] Query: "${query}" → ${searxngUrl}/search?q=…`)
     const t0 = Date.now()
 
     const res = await fetch(url, {
@@ -86,7 +86,7 @@ async function fetchWebSearch(query: string, maxResults = 5): Promise<SearchResu
         signal: AbortSignal.timeout(10000),
     })
 
-    console.log(`[${new Date().toISOString()}] [AI:search] [INFO] SearXNG responded ${res.status} in ${Date.now() - t0}ms`)
+    console.error(`[AI:search] SearXNG responded ${res.status} in ${Date.now() - t0}ms`)
 
     if (!res.ok) throw new Error(`SearXNG returned ${res.status}`)
 
@@ -103,7 +103,7 @@ async function fetchWebSearch(query: string, maxResults = 5): Promise<SearchResu
         }
     }
 
-    console.log(`[${new Date().toISOString()}] [AI:search] [INFO] Parsed ${results.length}/${data.results?.length ?? 0} results`)
+    console.error(`[AI:search] Parsed ${results.length}/${data.results?.length ?? 0} results`)
     return results
 }
 
@@ -703,13 +703,13 @@ const FinancialDashboardModule: AppModule = {
 
         // ── AI Analysis: helper to generate fresh analysis ───────────────────
         const aiLog = (level: 'INFO' | 'WARN' | 'ERROR', context: string, msg: string, detail?: unknown) => {
-            const ts = new Date().toISOString()
-            const prefix = `[${ts}] [AI:${context}] [${level}]`
-            if (detail !== undefined) {
-                console.log(`${prefix} ${msg}`, typeof detail === 'string' ? detail : JSON.stringify(detail, null, 2))
-            } else {
-                console.log(`${prefix} ${msg}`)
-            }
+            const tag = `[AI:${context}]`
+            const full = detail !== undefined
+                ? `${tag} ${msg} ${typeof detail === 'string' ? detail : JSON.stringify(detail)}`
+                : `${tag} ${msg}`
+            if (level === 'ERROR') server.log.error(full)
+            else if (level === 'WARN') server.log.warn(full)
+            else server.log.info(full)
         }
 
         async function generateAnalysis(lang: string): Promise<PersistedAnalysis> {
