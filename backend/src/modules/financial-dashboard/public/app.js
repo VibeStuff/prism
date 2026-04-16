@@ -901,24 +901,14 @@ function renderOracle(items) {
 }
 
 ;(function initNewsSourceToggle() {
-  const newsBody = document.getElementById('news-body')
-  const newsFooter = document.getElementById('news-footer')
-  const newsSearchRow = document.getElementById('news-search-row')
+  const headlinesWrap = document.getElementById('news-headlines-wrap')
   const oracleBody = document.getElementById('oracle-body')
   const toggleHeadlines = document.getElementById('toggle-news-headlines')
   const toggleOracle = document.getElementById('toggle-news-oracle')
 
-  let savedFooterDisplay = ''
   function showSource(source) {
     const isOracle = source === 'oracle'
-    if (isOracle) {
-      savedFooterDisplay = newsFooter.style.display
-      newsFooter.style.display = 'none'
-    } else {
-      newsFooter.style.display = savedFooterDisplay
-    }
-    newsBody.style.display = isOracle ? 'none' : ''
-    newsSearchRow.style.display = isOracle ? 'none' : ''
+    headlinesWrap.style.display = isOracle ? 'none' : ''
     oracleBody.style.display = isOracle ? '' : 'none'
     toggleHeadlines.classList.toggle('active', !isOracle)
     toggleOracle.classList.toggle('active', isOracle)

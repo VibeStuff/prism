@@ -78,16 +78,18 @@
               <button class="filter-clear-btn" id="news-filter-clear" title="Clear filter">✕</button>
             </span>
           </div>
-          <div class="news-search-row" id="news-search-row">
-            <svg class="news-search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
-            </svg>
-            <input type="text" id="news-search-input" class="news-search-input" placeholder="Search headlines…" autocomplete="off" maxlength="100" />
-            <button type="button" id="news-search-clear" class="news-search-clear" style="display:none" title="Clear search">✕</button>
-          </div>
-          <div id="news-body"><div class="skeleton" style="height:300px;border-radius:8px"></div></div>
-          <div id="news-footer" style="display:none;text-align:center;padding-top:12px">
-            <button id="news-more-btn" class="btn-load-more">Load more</button>
+          <div id="news-headlines-wrap">
+            <div class="news-search-row" id="news-search-row">
+              <svg class="news-search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+              </svg>
+              <input type="text" id="news-search-input" class="news-search-input" placeholder="Search headlines…" autocomplete="off" maxlength="100" />
+              <button type="button" id="news-search-clear" class="news-search-clear" style="display:none" title="Clear search">✕</button>
+            </div>
+            <div id="news-body"><div class="skeleton" style="height:300px;border-radius:8px"></div></div>
+            <div id="news-footer" style="display:none;text-align:center;padding-top:12px">
+              <button id="news-more-btn" class="btn-load-more">Load more</button>
+            </div>
           </div>
           <div id="oracle-body" style="display:none"><div class="skeleton" style="height:300px;border-radius:8px"></div></div>
         </section>
