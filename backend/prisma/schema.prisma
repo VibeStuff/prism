@@ -109,25 +109,35 @@ model AIDashboardNewsItem {
 }
 
 model AIDashboardWidget {
-  id        String         @id @default(cuid())
-  tabId     String
-  tab       AIDashboardTab @relation(fields: [tabId], references: [id], onDelete: Cascade)
-  slug      String
-  type      String
-  title     String
-  content   Json
-  colSpan   Int            @default(1)
-  rowSpan   Int            @default(1)
-  order     Int            @default(0)
-  visible   Boolean        @default(true)
-  style     Json?
-  icon      String?
-  link      String?
-  createdAt DateTime       @default(now())
-  updatedAt DateTime       @updatedAt
+  id         String         @id @default(cuid())
+  tabId      String
+  tab        AIDashboardTab @relation(fields: [tabId], references: [id], onDelete: Cascade)
+  slug       String
+  type       String
+  title      String
+  content    Json
+  colSpan    Int            @default(1)
+  rowSpan    Int            @default(1)
+  order      Int            @default(0)
+  visible    Boolean        @default(true)
+  style      Json?
+  icon       String?
+  link       String?
+  dataSource Json?
+  createdAt  DateTime       @default(now())
+  updatedAt  DateTime       @updatedAt
 
   @@unique([slug, tabId], name: "slug_tabId")
   @@map("dispatch_widgets")
+}
+
+model AIDashboardWidgetStore {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  value     Json
+  updatedAt DateTime @updatedAt
+
+  @@map("dispatch_widget_store")
 }
 
 model AIDashboardMeta {

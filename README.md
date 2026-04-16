@@ -158,14 +158,22 @@ A real-time market intelligence dashboard powered by AI:
 
 ### AI Dashboard
 
-A programmable widget dashboard controlled via REST API or LLM agents:
+A programmable widget dashboard controlled via REST API or LLM agents. Ships **21 widget types** and a server-side `dataSource` system that auto-hydrates from Yahoo Finance, Google News, thespread.news, and Anthropic.
+
+| Category | Widget types |
+|:--|:--|
+| **Core** | `stat`, `list`, `markdown`, `chart` (bar/line/area/scatter/pie/doughnut/candlestick/ohlc), `html`, `progress`, `table`, `image`, `countdown`, `kv`, `embed` |
+| **Financial / social** | `ticker-tape`, `sparkline-card`, `watchlist`, `sector-list`, `news-feed`, `oracle-feed`, `movers`, `trending`, `asset-highlights`, `chat-thread` |
 
 | Feature | Description |
 |:--|:--|
-| **11 Widget Types** | stat, list, markdown, html, chart, progress, table, image, countdown, kv, embed |
 | **News Feed** | Pinnable, categorized announcements with markdown support |
 | **Multi-Tab** | Organize widgets across named tabs |
 | **Push API** | Bulk-update widgets, news, and metadata in one atomic call |
+| **Data Sources** | Any widget can declare a `dataSource` (Yahoo quotes, RSS, thespread.news, Anthropic analysis/summary, widget-store) — the server polls and broadcasts updates |
+| **Widget Store** | Small key-value JSON store for stateful widgets (e.g. editable watchlist) |
+
+The financial/social widget set was retroactively ported from the standalone `financial-dashboard` module so an agent can recreate a full market-style dashboard with a single `POST /ai-dashboard/api/push`. See `backend/src/modules/ai-dashboard/README.md` for widget payload shapes, dataSource specs, and a full worked example.
 
 ### Built-in Dashboard
 

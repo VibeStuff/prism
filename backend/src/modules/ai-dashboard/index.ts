@@ -3,6 +3,14 @@ import fs from 'fs'
 import { z } from 'zod'
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify'
 import type { AppModule, CoreServices } from '../../shared/types/module'
+import { HydrationScheduler, type DataSourceSpec } from './data-sources'
+
+// Prisma's JSON columns require a narrow InputJsonValue type, but every place we
+// set them here the value is already JSON-safe (it came from Zod validation or
+// from another JSON column). A single cast at the boundary keeps the call sites
+// readable without weakening the rest of the types.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const asJson = (v: unknown): any => v
 
 // ─── Zod Schemas ────────────────────────────────────────────────────────────
 
@@ -31,11 +39,27 @@ const widgetStyleSchema = z.object({
     padding: z.string().optional(),
 }).optional().nullable()
 
+const dataSourceSchema = z.object({
+    type: z.enum([
+        'yahoo-quotes', 'yahoo-indices', 'yahoo-sectors', 'yahoo-movers',
+        'google-news-rss', 'thespread-oracle',
+        'anthropic-analysis', 'anthropic-summary',
+        'widget-store',
+    ]),
+    params: z.record(z.unknown()).optional(),
+    refreshMs: z.number().int().min(10_000).optional(),
+}).optional().nullable()
+
 const widgetUpsertSchema = z.object({
     slug: z.string().min(1).regex(/^[a-z0-9][a-z0-9-]*$/),
     type: z.enum([
+        // Core presentational
         'stat', 'list', 'markdown', 'chart', 'html',
         'progress', 'table', 'image', 'countdown', 'kv', 'embed',
+        // Financial / social (added retroactively from financial-dashboard)
+        'ticker-tape', 'sparkline-card', 'watchlist', 'sector-list',
+        'news-feed', 'oracle-feed', 'movers', 'trending',
+        'asset-highlights', 'chat-thread',
     ]),
     title: z.string().min(1),
     content: z.record(z.unknown()),
@@ -46,6 +70,19 @@ const widgetUpsertSchema = z.object({
     style: widgetStyleSchema,
     icon: z.string().optional().nullable(),
     link: z.string().url().optional().nullable(),
+    dataSource: dataSourceSchema,
+})
+
+const widgetStoreValueSchema = z.object({
+    value: z.unknown(),
+})
+
+const widgetStoreItemSchema = z.object({
+    item: z.unknown(),
+})
+
+const widgetStoreRemoveSchema = z.object({
+    value: z.unknown(),
 })
 
 const metaSchema = z.object({
@@ -82,6 +119,15 @@ const AiDashboardModule: AppModule = {
     async register(server: FastifyInstance, services: CoreServices, prefix: string): Promise<void> {
         const publicDir = path.join(process.cwd(), 'src', 'modules', 'ai-dashboard', 'public')
         const assetPrefix = `${prefix}-assets`
+
+        // ── Data-source hydration scheduler ─────────────────────────────────
+        const scheduler = new HydrationScheduler(
+            services.db,
+            services.io,
+            (m) => server.log.info(m),
+        )
+        // Start asynchronously so module registration doesn't block on network.
+        scheduler.start().catch(err => server.log.warn(`[AiDashboardModule] scheduler start failed: ${String(err)}`))
 
         // ── Auth helper ─────────────────────────────────────────────────────
         function requireToken(request: FastifyRequest, reply: FastifyReply): boolean {
@@ -248,25 +294,55 @@ const AiDashboardModule: AppModule = {
                     for (const w of widgets) {
                         await tx.aIDashboardWidget.upsert({
                             where: { slug_tabId: { slug: w.slug, tabId: tab.id } },
-                            create: { ...w, tabId: tab.id },
+                            create: {
+                                ...w,
+                                tabId: tab.id,
+                                content: asJson(w.content),
+                                style: w.style ? asJson(w.style) : undefined,
+                                dataSource: w.dataSource ? asJson(w.dataSource) : undefined,
+                            },
                             update: {
-                                type: w.type, title: w.title, content: w.content,
+                                type: w.type, title: w.title, content: asJson(w.content),
                                 colSpan: w.colSpan, rowSpan: w.rowSpan, order: w.order,
-                                visible: w.visible, style: w.style ?? undefined,
+                                visible: w.visible,
+                                style: w.style ? asJson(w.style) : undefined,
                                 icon: w.icon ?? undefined, link: w.link ?? undefined,
+                                dataSource: w.dataSource ? asJson(w.dataSource) : undefined,
                             },
                         })
                     }
                 }
 
                 if (meta) {
+                    const metaData = {
+                        ...meta,
+                        theme: meta.theme === null ? undefined : meta.theme ? asJson(meta.theme) : undefined,
+                    }
                     await tx.aIDashboardMeta.upsert({
                         where: { tabId: tab.id },
-                        create: { ...meta, tabId: tab.id },
-                        update: meta,
+                        create: { ...metaData, tabId: tab.id },
+                        update: metaData,
                     })
                 }
             })
+
+            // Re-schedule any widgets with dataSource (after transaction commits)
+            if (widgets?.length) {
+                const affected = await services.db.aIDashboardWidget.findMany({
+                    where: { tabId: tab.id, slug: { in: widgets.map(w => w.slug) } },
+                })
+                for (const w of affected) {
+                    if (w.dataSource) scheduler.schedule(w.id, w.dataSource as unknown as DataSourceSpec)
+                    else scheduler.cancel(w.id)
+                }
+            }
+            if (clearWidgets === true) {
+                // All widgets for this tab were deleted
+                scheduler.stopAll()
+                scheduler.start().catch(err =>
+                    server.log.warn(`[AiDashboardModule] scheduler restart failed: ${String(err)}`),
+                )
+            }
 
             broadcast('full', tab.slug)
             return { success: true, tab: tab.slug }
@@ -409,22 +485,60 @@ const AiDashboardModule: AppModule = {
 
                 const widget = await services.db.aIDashboardWidget.upsert({
                     where: { slug_tabId: { slug: parsed.data.slug, tabId: tab.id } },
-                    create: { ...parsed.data, tabId: tab.id },
+                    create: {
+                        ...parsed.data,
+                        tabId: tab.id,
+                        content: asJson(parsed.data.content),
+                        style: parsed.data.style ? asJson(parsed.data.style) : undefined,
+                        dataSource: parsed.data.dataSource ? asJson(parsed.data.dataSource) : undefined,
+                    },
                     update: {
                         type: parsed.data.type,
                         title: parsed.data.title,
-                        content: parsed.data.content,
+                        content: asJson(parsed.data.content),
                         colSpan: parsed.data.colSpan,
                         rowSpan: parsed.data.rowSpan,
                         order: parsed.data.order,
                         visible: parsed.data.visible,
-                        style: parsed.data.style ?? undefined,
+                        style: parsed.data.style ? asJson(parsed.data.style) : undefined,
                         icon: parsed.data.icon ?? undefined,
                         link: parsed.data.link ?? undefined,
+                        dataSource: parsed.data.dataSource ? asJson(parsed.data.dataSource) : undefined,
                     },
                 })
+
+                if (widget.dataSource) {
+                    scheduler.schedule(widget.id, widget.dataSource as unknown as DataSourceSpec)
+                } else {
+                    scheduler.cancel(widget.id)
+                }
+
                 broadcast('widgets', tab.slug)
                 return widget
+            },
+        )
+
+        // ── Widgets: Force refresh dataSource ───────────────────────────────
+        server.post<{ Params: { slug: string }; Querystring: { tab?: string } }>(
+            `${prefix}/api/widgets/:slug/refresh`,
+            { config: { public: true } } as never,
+            async (req, reply) => {
+                if (!requireToken(req, reply)) return
+                const tab = await resolveTab(req.query.tab)
+                if (!tab) return reply.code(404).send({ error: 'Tab not found' })
+
+                const widget = await services.db.aIDashboardWidget.findUnique({
+                    where: { slug_tabId: { slug: req.params.slug, tabId: tab.id } },
+                })
+                if (!widget) return reply.code(404).send({ error: 'Widget not found' })
+                if (!widget.dataSource) return reply.code(400).send({ error: 'Widget has no dataSource' })
+
+                try {
+                    await scheduler.hydrateOnce(widget.id, widget.dataSource as unknown as DataSourceSpec)
+                    return { success: true }
+                } catch (err) {
+                    return reply.code(502).send({ error: 'Hydration failed', detail: String(err) })
+                }
             },
         )
 
@@ -436,11 +550,141 @@ const AiDashboardModule: AppModule = {
                 if (!requireToken(req, reply)) return
                 try {
                     const widget = await services.db.aIDashboardWidget.delete({ where: { id: req.params.id } })
+                    scheduler.cancel(widget.id)
                     broadcast('widgets', widget.tabId)
                     return { success: true }
                 } catch {
                     return reply.code(404).send({ error: 'Widget not found' })
                 }
+            },
+        )
+
+        // ── Widget Store ────────────────────────────────────────────────────
+        // Small key/value JSON store shared between UI and API — used by the
+        // `watchlist` widget and anywhere stateful lists need to live server-side
+        // without declaring a schema.
+
+        server.get<{ Params: { key: string } }>(
+            `${prefix}/api/widget-store/:key`,
+            { config: { public: true } } as never,
+            async (req, reply) => {
+                const entry = await services.db.aIDashboardWidgetStore.findUnique({
+                    where: { key: req.params.key },
+                })
+                if (!entry) return reply.code(404).send({ error: 'Store key not found' })
+                return entry
+            },
+        )
+
+        server.put<{ Params: { key: string } }>(
+            `${prefix}/api/widget-store/:key`,
+            { config: { public: true } } as never,
+            async (req, reply) => {
+                if (!requireToken(req, reply)) return
+                const parsed = widgetStoreValueSchema.safeParse(req.body)
+                if (!parsed.success) return reply.code(400).send({ error: 'Validation failed', details: parsed.error.flatten() })
+
+                const entry = await services.db.aIDashboardWidgetStore.upsert({
+                    where: { key: req.params.key },
+                    create: { key: req.params.key, value: asJson(parsed.data.value) },
+                    update: { value: asJson(parsed.data.value) },
+                })
+                broadcast('widgets')
+                return entry
+            },
+        )
+
+        server.post<{ Params: { key: string } }>(
+            `${prefix}/api/widget-store/:key/append`,
+            { config: { public: true } } as never,
+            async (req, reply) => {
+                if (!requireToken(req, reply)) return
+                const parsed = widgetStoreItemSchema.safeParse(req.body)
+                if (!parsed.success) return reply.code(400).send({ error: 'Validation failed', details: parsed.error.flatten() })
+
+                const existing = await services.db.aIDashboardWidgetStore.findUnique({ where: { key: req.params.key } })
+                const current = Array.isArray(existing?.value) ? existing!.value as unknown[] : []
+                const next = [...current, parsed.data.item]
+                const entry = await services.db.aIDashboardWidgetStore.upsert({
+                    where: { key: req.params.key },
+                    create: { key: req.params.key, value: asJson(next) },
+                    update: { value: asJson(next) },
+                })
+                broadcast('widgets')
+                return entry
+            },
+        )
+
+        server.delete<{ Params: { key: string } }>(
+            `${prefix}/api/widget-store/:key/item`,
+            { config: { public: true } } as never,
+            async (req, reply) => {
+                if (!requireToken(req, reply)) return
+                const parsed = widgetStoreRemoveSchema.safeParse(req.body)
+                if (!parsed.success) return reply.code(400).send({ error: 'Validation failed', details: parsed.error.flatten() })
+
+                const existing = await services.db.aIDashboardWidgetStore.findUnique({ where: { key: req.params.key } })
+                if (!existing) return reply.code(404).send({ error: 'Store key not found' })
+                const current = Array.isArray(existing.value) ? existing.value as unknown[] : []
+                const needle = JSON.stringify(parsed.data.value)
+                const next = current.filter(v => JSON.stringify(v) !== needle)
+                const entry = await services.db.aIDashboardWidgetStore.update({
+                    where: { key: req.params.key },
+                    data: { value: asJson(next) },
+                })
+                broadcast('widgets')
+                return entry
+            },
+        )
+
+        // Public-append variant for editable widgets (e.g. watchlist UI) — does not
+        // require the bearer token, but restricts what can be appended via a small
+        // schema check upstream. In practice, the editable watchlist uses this.
+        server.post<{ Params: { key: string } }>(
+            `${prefix}/api/widget-store/:key/append-public`,
+            { config: { public: true } } as never,
+            async (req, reply) => {
+                const parsed = widgetStoreItemSchema.safeParse(req.body)
+                if (!parsed.success) return reply.code(400).send({ error: 'Validation failed' })
+                const raw = parsed.data.item
+                // Accept only short alphanumeric strings (ticker-like values).
+                if (typeof raw !== 'string' || !/^[A-Za-z0-9.^=\-]{1,12}$/.test(raw)) {
+                    return reply.code(400).send({ error: 'Invalid item — must be a short ticker-like string' })
+                }
+                const normalized = raw.toUpperCase()
+                const existing = await services.db.aIDashboardWidgetStore.findUnique({ where: { key: req.params.key } })
+                const current = Array.isArray(existing?.value) ? existing!.value as unknown[] : []
+                if (current.includes(normalized)) return { ok: true, skipped: 'already-present' }
+                const next = [...current, normalized]
+                await services.db.aIDashboardWidgetStore.upsert({
+                    where: { key: req.params.key },
+                    create: { key: req.params.key, value: asJson(next) },
+                    update: { value: asJson(next) },
+                })
+                broadcast('widgets')
+                return { ok: true, value: next }
+            },
+        )
+
+        server.delete<{ Params: { key: string }; Querystring: { value?: string } }>(
+            `${prefix}/api/widget-store/:key/item-public`,
+            { config: { public: true } } as never,
+            async (req, reply) => {
+                const raw = String(req.query.value ?? '').trim()
+                if (!raw || !/^[A-Za-z0-9.^=\-]{1,12}$/.test(raw)) {
+                    return reply.code(400).send({ error: 'Invalid value' })
+                }
+                const normalized = raw.toUpperCase()
+                const existing = await services.db.aIDashboardWidgetStore.findUnique({ where: { key: req.params.key } })
+                if (!existing) return reply.code(404).send({ error: 'Store key not found' })
+                const current = Array.isArray(existing.value) ? existing.value as unknown[] : []
+                const next = current.filter(v => v !== normalized && v !== raw)
+                await services.db.aIDashboardWidgetStore.update({
+                    where: { key: req.params.key },
+                    data: { value: asJson(next) },
+                })
+                broadcast('widgets')
+                return { ok: true, value: next }
             },
         )
 
@@ -469,10 +713,16 @@ const AiDashboardModule: AppModule = {
                 const tab = await resolveTab(req.query.tab)
                 if (!tab) return reply.code(404).send({ error: 'Tab not found' })
 
+                const metaData = {
+                    ...parsed.data,
+                    theme: parsed.data.theme === null
+                        ? undefined
+                        : parsed.data.theme ? asJson(parsed.data.theme) : undefined,
+                }
                 const meta = await services.db.aIDashboardMeta.upsert({
                     where: { tabId: tab.id },
-                    create: { ...parsed.data, tabId: tab.id },
-                    update: parsed.data,
+                    create: { ...metaData, tabId: tab.id },
+                    update: metaData,
                 })
                 broadcast('meta', tab.slug)
                 return meta

@@ -243,6 +243,17 @@ function renderRawContent(type, c) {
     case 'countdown': return renderCountdownWidget(c)
     case 'kv': return renderKvWidget(c)
     case 'embed': return renderEmbedWidget(c)
+    // ── Financial / social (retroactively ported from financial-dashboard) ──
+    case 'ticker-tape': return renderTickerTapeWidget(c)
+    case 'sparkline-card': return renderSparklineCardWidget(c)
+    case 'watchlist': return renderWatchlistWidget(c)
+    case 'sector-list': return renderSectorListWidget(c)
+    case 'news-feed': return renderNewsFeedWidget(c)
+    case 'oracle-feed': return renderOracleFeedWidget(c)
+    case 'movers': return renderMoversWidget(c)
+    case 'trending': return renderTrendingWidget(c)
+    case 'asset-highlights': return renderAssetHighlightsWidget(c)
+    case 'chat-thread': return renderChatThreadWidget(c)
     default: return `<div class="widget-markdown"><p>Unknown widget type: ${esc(type)}</p></div>`
   }
 }
@@ -924,6 +935,367 @@ function renderEmbedWidget(c) {
   }
 
   return `<iframe class="widget-embed-frame" src="${esc(src)}" style="width:${widthCss};height:${heightPx}px" sandbox="allow-scripts allow-same-origin" loading="lazy"></iframe>`
+}
+
+// ══════════════════════════════════════════════════════════
+//   Financial / social widgets (retroactively ported from
+//   financial-dashboard). Follow the same pattern as the
+//   core renderers above: take `c` (content), return HTML.
+// ══════════════════════════════════════════════════════════
+
+function fmtPrice(n, unit) {
+  if (n == null || !isFinite(n)) return '\u2014'
+  if (unit === '%' || unit === 'pct') return (+n).toFixed(2) + '%'
+  if (unit === '$' || unit === 'usd') return '$' + (+n).toLocaleString('en-US', { maximumFractionDigits: 2 })
+  if (Math.abs(n) >= 1000) return (+n).toLocaleString('en-US', { maximumFractionDigits: 2 })
+  return (+n).toFixed(2)
+}
+
+function renderChangeBadge(pct) {
+  if (pct == null || !isFinite(pct)) return ''
+  const p = +pct
+  const cls = p > 0 ? 'up' : p < 0 ? 'down' : 'neutral'
+  const arrow = p > 0 ? '\u25B2' : p < 0 ? '\u25BC' : ''
+  const sign = p > 0 ? '+' : ''
+  return `<span class="change-badge ${cls}">${arrow} ${sign}${p.toFixed(2)}%</span>`
+}
+
+function renderSparklineSvg(series, width, height) {
+  if (!Array.isArray(series) || series.length < 2) return ''
+  const w = width || 80
+  const h = height || 24
+  const min = Math.min(...series)
+  const max = Math.max(...series)
+  const range = max - min || 1
+  const step = w / (series.length - 1)
+  const points = series.map((v, i) => {
+    const x = (i * step).toFixed(2)
+    const y = (h - ((v - min) / range) * h).toFixed(2)
+    return `${x},${y}`
+  }).join(' ')
+  const last = series[series.length - 1]
+  const first = series[0]
+  const color = last >= first ? 'var(--green, #5a8a4a)' : 'var(--red, #a84040)'
+  return `<svg class="sparkline" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" aria-hidden="true">
+    <polyline points="${points}" fill="none" stroke="${color}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+  </svg>`
+}
+
+function renderTickerTapeWidget(c) {
+  const items = Array.isArray(c.items) ? c.items : []
+  if (!items.length) return '<div class="widget-markdown"><em style="color:var(--text-muted);font-size:0.8rem">No tickers</em></div>'
+  const dir = c.direction === 'right' ? 'reverse' : 'normal'
+  const speed = Math.max(20, Math.min(240, parseInt(c.speed) || 60))
+  // Duplicate the list so the marquee appears seamless
+  const row = items.map(it => {
+    const pct = +it.changePercent
+    const cls = pct > 0 ? 'up' : pct < 0 ? 'down' : 'neutral'
+    const sign = pct > 0 ? '+' : ''
+    return `<span class="ticker-tape-item">
+      <span class="ticker-tape-symbol">${esc(String(it.symbol || ''))}</span>
+      <span class="ticker-tape-price">${esc(fmtPrice(it.price))}</span>
+      <span class="ticker-tape-chg ${cls}">${sign}${isFinite(pct) ? pct.toFixed(2) : '0.00'}%</span>
+    </span>`
+  }).join('')
+  return `<div class="widget-ticker-tape" style="--tape-duration:${speed}s;--tape-dir:${dir}">
+    <div class="ticker-tape-track">${row}${row}</div>
+  </div>`
+}
+
+function renderSparklineCardWidget(c) {
+  const cards = Array.isArray(c.cards) ? c.cards : []
+  if (!cards.length) return '<div class="widget-markdown"><em style="color:var(--text-muted);font-size:0.8rem">No cards</em></div>'
+  return `<div class="widget-sparkline-grid">${cards.map(card => {
+    const series = Array.isArray(card.series) ? card.series : []
+    const pct = +card.changePercent
+    const sign = pct > 0 ? '+' : ''
+    const cls = pct > 0 ? 'up' : pct < 0 ? 'down' : 'neutral'
+    return `<div class="sparkline-card">
+      <div class="sparkline-card-label">${esc(String(card.label || card.symbol || ''))}</div>
+      <div class="sparkline-card-row">
+        <div class="sparkline-card-svg">${renderSparklineSvg(series, 96, 28)}</div>
+        <div class="sparkline-card-num">
+          <div class="sparkline-card-price">${esc(fmtPrice(card.price))}</div>
+          <div class="sparkline-card-chg ${cls}">${sign}${isFinite(pct) ? pct.toFixed(2) : '0.00'}%</div>
+        </div>
+      </div>
+    </div>`
+  }).join('')}</div>`
+}
+
+function renderWatchlistWidget(c) {
+  const items = Array.isArray(c.items) ? c.items : []
+  const editable = !!c.editable
+  const storeKey = c.storeKey ? String(c.storeKey) : null
+  const rows = items.length
+    ? items.map(it => {
+      const sym = esc(String(it.symbol || ''))
+      const remove = editable && storeKey
+        ? `<button class="watchlist-remove" title="Remove" onclick="watchlistRemove('${esc(storeKey)}','${sym}')">\u00D7</button>`
+        : ''
+      return `<div class="watchlist-row">
+        <span class="watchlist-symbol">${sym}</span>
+        <span class="watchlist-name">${esc(String(it.longName || ''))}</span>
+        <span class="watchlist-price">${esc(fmtPrice(it.price))}</span>
+        ${renderChangeBadge(it.changePercent)}
+        ${remove}
+      </div>`
+    }).join('')
+    : '<div class="watchlist-empty">No symbols yet</div>'
+  const addBar = editable && storeKey
+    ? `<form class="watchlist-add" onsubmit="watchlistAdd(event,'${esc(storeKey)}')">
+        <input type="text" placeholder="Add ticker..." maxlength="12" required />
+        <button type="submit">Add</button>
+      </form>`
+    : ''
+  return `<div class="widget-watchlist">${rows}${addBar}</div>`
+}
+
+window.watchlistAdd = async function (ev, key) {
+  ev.preventDefault()
+  const form = ev.currentTarget
+  const input = form.querySelector('input')
+  const raw = (input.value || '').trim()
+  if (!raw) return
+  try {
+    const res = await fetch(`${API}/api/widget-store/${encodeURIComponent(key)}/append-public`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ item: raw }),
+    })
+    if (!res.ok) {
+      const e = await res.json().catch(() => ({}))
+      toast(e.error || 'Failed to add', 'err')
+      return
+    }
+    input.value = ''
+    toast('Added ' + raw.toUpperCase())
+  } catch (e) {
+    toast(String(e), 'err')
+  }
+}
+
+window.watchlistRemove = async function (key, value) {
+  try {
+    const res = await fetch(`${API}/api/widget-store/${encodeURIComponent(key)}/item-public?value=${encodeURIComponent(value)}`, {
+      method: 'DELETE',
+    })
+    if (!res.ok) {
+      const e = await res.json().catch(() => ({}))
+      toast(e.error || 'Failed to remove', 'err')
+      return
+    }
+    toast('Removed ' + value)
+  } catch (e) {
+    toast(String(e), 'err')
+  }
+}
+
+function renderSectorListWidget(c) {
+  const items = Array.isArray(c.items) ? c.items : []
+  if (!items.length) return '<div class="widget-markdown"><em style="color:var(--text-muted);font-size:0.8rem">No sectors</em></div>'
+  return `<div class="widget-sector-list">${items.map(it => `
+    <div class="sector-row">
+      <span class="sector-symbol">${esc(String(it.symbol || ''))}</span>
+      <span class="sector-name">${esc(String(it.name || ''))}</span>
+      ${renderChangeBadge(it.changePercent)}
+    </div>
+  `).join('')}</div>`
+}
+
+function renderNewsFeedWidget(c) {
+  const items = Array.isArray(c.items) ? c.items : []
+  const searchable = c.searchable !== false
+  const searchBar = searchable
+    ? `<div class="news-feed-search">
+        <input type="text" class="news-feed-input" placeholder="Search headlines..." oninput="newsFeedFilter(this)" />
+      </div>`
+    : ''
+  if (!items.length) return `<div class="widget-news-feed">${searchBar}<div class="widget-markdown"><em style="color:var(--text-muted);font-size:0.8rem">No news yet</em></div></div>`
+  const rows = items.map(it => `
+    <a class="news-feed-row" href="${esc(String(it.link || '#'))}" target="_blank" rel="noopener">
+      <div class="news-feed-title">${esc(String(it.title || ''))}</div>
+      ${it.description ? `<div class="news-feed-desc">${esc(String(it.description))}</div>` : ''}
+      <div class="news-feed-meta">
+        <span>${esc(String(it.source || ''))}</span>
+        ${it.pubDate ? `<span>\u00B7 ${timeAgo(it.pubDate)}</span>` : ''}
+      </div>
+    </a>
+  `).join('')
+  return `<div class="widget-news-feed">${searchBar}<div class="news-feed-list">${rows}</div></div>`
+}
+
+window.newsFeedFilter = function (input) {
+  const q = (input.value || '').toLowerCase().trim()
+  const list = input.closest('.widget-news-feed').querySelector('.news-feed-list')
+  if (!list) return
+  list.querySelectorAll('.news-feed-row').forEach(row => {
+    const txt = row.textContent.toLowerCase()
+    row.style.display = !q || txt.includes(q) ? '' : 'none'
+  })
+}
+
+function renderOracleFeedWidget(c) {
+  const items = Array.isArray(c.items) ? c.items : []
+  if (!items.length) return '<div class="widget-markdown"><em style="color:var(--text-muted);font-size:0.8rem">No feed items</em></div>'
+  return `<div class="widget-oracle-feed">${items.map(it => renderOracleItem(it)).join('')}</div>`
+}
+
+function renderOracleItem(it) {
+  const markets = Array.isArray(it.markets) ? it.markets : []
+  const chips = markets.length ? `<div class="oracle-chips">${markets.map(renderMarketChip).join('')}</div>` : ''
+  const logo = it.sourceLogo ? `<img class="oracle-logo" src="${esc(it.sourceLogo)}" alt="" loading="lazy" onerror="this.style.display='none'" />` : ''
+  const time = it.pubDate ? `<span class="oracle-time">${timeAgo(it.pubDate)}</span>` : ''
+  if (it.kind === 'tweet') {
+    const eng = it.engagement || {}
+    return `<a class="oracle-card oracle-card-tweet" href="${esc(it.link || '#')}" target="_blank" rel="noopener">
+      <div class="oracle-header">
+        ${logo}
+        <div class="oracle-author">
+          <span class="oracle-author-name">${esc(String(it.authorName || it.source || ''))}</span>
+          ${it.authorHandle ? `<span class="oracle-author-handle">@${esc(it.authorHandle)}</span>` : ''}
+        </div>
+        ${time}
+      </div>
+      <div class="oracle-body">${esc(String(it.text || it.title || ''))}</div>
+      ${chips}
+      <div class="oracle-engagement">
+        <span>\uD83D\uDCAC ${eng.replies || 0}</span>
+        <span>\uD83D\uDD01 ${eng.retweets || 0}</span>
+        <span>\u2764 ${eng.likes || 0}</span>
+      </div>
+    </a>`
+  }
+  const img = it.image ? `<img class="oracle-image" src="${esc(it.image)}" alt="" loading="lazy" onerror="this.style.display='none'" />` : ''
+  return `<a class="oracle-card oracle-card-headline" href="${esc(it.link || '#')}" target="_blank" rel="noopener">
+    ${img}
+    <div class="oracle-content">
+      <div class="oracle-header">
+        ${logo}
+        <span class="oracle-author-name">${esc(String(it.source || ''))}</span>
+        ${time}
+      </div>
+      <div class="oracle-title">${esc(String(it.title || ''))}</div>
+      ${it.summary ? `<div class="oracle-summary">${esc(String(it.summary))}</div>` : ''}
+      ${chips}
+    </div>
+  </a>`
+}
+
+function renderMarketChip(m) {
+  const dirArrow = m.direction === 'down' ? '\u2193' : '\u2191'
+  const dirClass = m.direction === 'down' ? 'down' : 'up'
+  const pct = Math.max(0, Math.min(100, +m.pct || 0))
+  return `<a class="market-chip ${dirClass}" href="${esc(m.url || '#')}" target="_blank" rel="noopener" onclick="event.stopPropagation()">
+    <span class="market-chip-arrow">${dirArrow}</span>
+    <span class="market-chip-pct">${pct}%</span>
+    <span class="market-chip-q">${esc(String(m.question || ''))}</span>
+  </a>`
+}
+
+function renderMoversWidget(c) {
+  const gainers = Array.isArray(c.gainers) ? c.gainers : []
+  const losers = Array.isArray(c.losers) ? c.losers : []
+  const row = (it) => `<div class="movers-row">
+    <span class="movers-symbol">${esc(String(it.symbol || ''))}</span>
+    <span class="movers-name">${esc(String(it.longName || ''))}</span>
+    ${renderChangeBadge(it.changePercent)}
+  </div>`
+  return `<div class="widget-movers">
+    <div class="movers-col">
+      <div class="movers-head up">Gainers</div>
+      ${gainers.length ? gainers.map(row).join('') : '<div class="movers-empty">\u2014</div>'}
+    </div>
+    <div class="movers-col">
+      <div class="movers-head down">Losers</div>
+      ${losers.length ? losers.map(row).join('') : '<div class="movers-empty">\u2014</div>'}
+    </div>
+  </div>`
+}
+
+function renderTrendingWidget(c) {
+  const items = Array.isArray(c.items) ? c.items : []
+  if (!items.length) return '<div class="widget-markdown"><em style="color:var(--text-muted);font-size:0.8rem">No trending</em></div>'
+  return `<div class="widget-trending">${items.map((it, i) => `
+    <div class="trending-row">
+      <span class="trending-rank">${esc(String(it.rank != null ? it.rank : i + 1))}</span>
+      <span class="trending-symbol">${esc(String(it.symbol || ''))}</span>
+      <span class="trending-name">${esc(String(it.longName || ''))}</span>
+      ${renderChangeBadge(it.changePercent)}
+    </div>
+  `).join('')}</div>`
+}
+
+function renderAssetHighlightsWidget(c) {
+  const items = Array.isArray(c.items) ? c.items : []
+  if (!items.length) return '<div class="widget-markdown"><em style="color:var(--text-muted);font-size:0.8rem">No assets</em></div>'
+  return `<div class="widget-asset-highlights">${items.map(it => `
+    <div class="asset-row">
+      <div class="asset-label">
+        <div class="asset-label-main">${esc(String(it.label || ''))}</div>
+        <div class="asset-label-sym">${esc(String(it.symbol || ''))}</div>
+      </div>
+      <div class="asset-value">${esc(fmtPrice(it.value, it.unit))}</div>
+      ${renderChangeBadge(it.changePercent)}
+    </div>
+  `).join('')}</div>`
+}
+
+function renderChatThreadWidget(c) {
+  const msgs = Array.isArray(c.messages) ? c.messages : []
+  const placeholder = esc(String(c.placeholder || 'Ask a question...'))
+  const endpoint = c.endpoint ? String(c.endpoint) : null
+  const rows = msgs.length
+    ? msgs.map(m => {
+      const role = m.role === 'user' ? 'user' : 'assistant'
+      const body = role === 'assistant' && typeof marked !== 'undefined'
+        ? marked.parse(String(m.text || ''))
+        : esc(String(m.text || ''))
+      const actions = Array.isArray(m.actions) && m.actions.length
+        ? `<div class="chat-actions">${m.actions.map(a => `<span class="chat-action">${esc(String(a.type || a.label || a))}${a.symbol ? ' ' + esc(a.symbol) : ''}</span>`).join('')}</div>`
+        : ''
+      const time = m.time ? `<span class="chat-time">${timeAgo(m.time)}</span>` : ''
+      return `<div class="chat-msg chat-msg-${role}">
+        <div class="chat-bubble">${body}</div>
+        ${actions}
+        ${time}
+      </div>`
+    }).join('')
+    : '<div class="chat-empty">No messages</div>'
+  const input = endpoint
+    ? `<form class="chat-input" onsubmit="chatSubmit(event,'${esc(endpoint)}')">
+        <input type="text" placeholder="${placeholder}" required />
+        <button type="submit">\u2192</button>
+      </form>`
+    : ''
+  return `<div class="widget-chat-thread"><div class="chat-log">${rows}</div>${input}</div>`
+}
+
+window.chatSubmit = async function (ev, endpoint) {
+  ev.preventDefault()
+  const form = ev.currentTarget
+  const input = form.querySelector('input')
+  const msg = (input.value || '').trim()
+  if (!msg) return
+  input.disabled = true
+  try {
+    const res = await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: msg }),
+    })
+    if (!res.ok) {
+      const e = await res.json().catch(() => ({}))
+      toast(e.error || 'Chat failed', 'err')
+    } else {
+      input.value = ''
+    }
+  } catch (e) {
+    toast(String(e), 'err')
+  } finally {
+    input.disabled = false
+    input.focus()
+  }
 }
 
 // ── News Rendering ──────────────────────────────────────

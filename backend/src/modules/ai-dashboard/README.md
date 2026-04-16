@@ -13,13 +13,20 @@ A dashboard with zero hardcoded content. Every widget, news box, title, and layo
 
 ---
 
-You have access to the Prism AI Dashboard API. This dashboard displays widgets (stat cards, lists, markdown, charts including candlestick/OHLC stock charts, tables, progress bars, countdowns, key-value pairs, images, embeds, and raw HTML) and news boxes. You control **all** content — nothing is hardcoded. Every visual element is created, updated, or removed by your API calls. The dashboard auto-updates in real time via WebSocket when you push changes.
+You have access to the Prism AI Dashboard API. This dashboard displays widgets and news boxes. You control **all** content — nothing is hardcoded. Every visual element is created, updated, or removed by your API calls. The dashboard auto-updates in real time via WebSocket when you push changes.
+
+**Available widget types (21):**
+
+- **Core presentational:** `stat`, `list`, `markdown`, `chart` (bar/line/area/scatter/pie/doughnut/candlestick/ohlc), `html`, `progress`, `table`, `image`, `countdown`, `kv`, `embed`
+- **Financial / social (ported from financial-dashboard):** `ticker-tape`, `sparkline-card`, `watchlist`, `sector-list`, `news-feed`, `oracle-feed`, `movers`, `trending`, `asset-highlights`, `chat-thread`
 
 **Advanced widget capabilities:**
 - **Intra-widget tabs** — any widget can have API-defined tabs that switch its content client-side (no reload).
 - **Split panel** — any widget can render a main content area alongside a sidebar of sub-panels (markdown, list, kv, stat, etc.).
 - **Chart annotations** — mark specific data points on line/area/candlestick/OHLC charts with a callout ring and label.
 - **Embed sizing & scaling** — embed widgets support custom `width`, `height`, and a `scale` factor so non-responsive pages can be rendered at native size and CSS-scaled to fit the grid.
+- **Data sources** — any widget can carry an optional `dataSource` so the server hydrates its content on a schedule (Yahoo Finance quotes, Google News RSS, thespread.news oracle feed, Anthropic analysis/summary, or a shared `widget-store`). See "Data Sources" below.
+- **Widget store** — a small key-value JSON store the server exposes so stateful widgets (like `watchlist`) survive reloads and can be mutated from either the UI or the API.
 
 ### Authentication
 
@@ -51,7 +58,7 @@ All endpoints are under `/ai-dashboard`. Example: `http://localhost:3000/ai-dash
   "widgets": [
     {
       "slug": "unique-id (lowercase, alphanumeric + hyphens, e.g. 'weather-today')",
-      "type": "stat | list | markdown | chart | html | progress | table | image | countdown | kv | embed",
+      "type": "stat | list | markdown | chart | html | progress | table | image | countdown | kv | embed | ticker-tape | sparkline-card | watchlist | sector-list | news-feed | oracle-feed | movers | trending | asset-highlights | chat-thread",
       "title": "Widget heading text",
       "content": { "...type-specific payload (see below)..." },
       "colSpan": "integer 1–12 — Grid columns to span (default: 1)",
@@ -69,6 +76,11 @@ All endpoints are under `/ai-dashboard`. Example: `http://localhost:3000/ai-dash
         "accentColor": "CSS color — Accent (progress bars, countdown numbers)",
         "opacity": "number 0–1 — Card opacity",
         "padding": "CSS padding value"
+      },
+      "dataSource": {
+        "type": "yahoo-quotes | yahoo-indices | yahoo-sectors | yahoo-movers | google-news-rss | thespread-oracle | anthropic-analysis | anthropic-summary | widget-store",
+        "params": "object — Type-specific parameters (see 'Data Sources')",
+        "refreshMs": "integer (min 10_000) — Poll interval. Default 60_000."
       }
     }
   ],
@@ -445,6 +457,274 @@ Sandboxed with `allow-scripts allow-same-origin`.
 
 ---
 
+### Financial / Social Widget Types
+
+These were retroactively ported from the `financial-dashboard` module so an agent can recreate a finance-style dashboard via `/api/push` alone. All accept the same top-level fields as other widgets (`style`, `icon`, `link`, `dataSource`, etc.).
+
+#### `ticker-tape` — Scrolling marquee of symbols
+
+```json
+{
+  "slug": "tape",
+  "type": "ticker-tape",
+  "title": "Markets",
+  "colSpan": 4,
+  "content": {
+    "items": [
+      { "symbol": "SPX",  "price": 5254.12, "changePercent":  0.42 },
+      { "symbol": "NDX",  "price": 18120.33, "changePercent": -0.18 },
+      { "symbol": "BTC",  "price": 64210.00, "changePercent":  1.22 }
+    ],
+    "speed": 60,
+    "direction": "left"
+  }
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `items` | array | **yes** | `{ symbol, price, changePercent }` entries. |
+| `speed` | number | no | Loop duration in seconds (20–240). Default: 60. |
+| `direction` | `"left"` / `"right"` | no | Scroll direction. Default: `left`. |
+
+#### `sparkline-card` — Row of mini price cards with inline sparklines
+
+```json
+{
+  "slug": "indices",
+  "type": "sparkline-card",
+  "title": "Major Indices",
+  "colSpan": 4,
+  "content": {
+    "cards": [
+      { "symbol": "^GSPC", "label": "S&P 500",   "price": 5254.12, "changePercent":  0.42, "series": [5210, 5225, 5240, 5218, 5254] },
+      { "symbol": "^DJI",  "label": "Dow Jones", "price": 38900.1, "changePercent": -0.12, "series": [38820, 38945, 38880, 38920, 38900] }
+    ]
+  }
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `cards` | array | **yes** | One card per asset. |
+| `cards[].label` | string | no | Display label (falls back to `symbol`). |
+| `cards[].symbol` | string | **yes** | Ticker. |
+| `cards[].price` | number | **yes** | Current price. |
+| `cards[].change` | number | no | Absolute change. |
+| `cards[].changePercent` | number | **yes** | Percent change. |
+| `cards[].series` | number[] | **yes** | Closing price series for the sparkline. |
+
+Best paired with `dataSource: { type: "yahoo-indices" }` or `yahoo-quotes`.
+
+#### `watchlist` — Editable ticker list
+
+```json
+{
+  "slug": "my-watchlist",
+  "type": "watchlist",
+  "title": "Watchlist",
+  "content": {
+    "editable": true,
+    "storeKey": "my-watchlist",
+    "items": [
+      { "symbol": "AAPL", "longName": "Apple Inc.",     "price": 191.80, "changePercent": 0.42 },
+      { "symbol": "NVDA", "longName": "NVIDIA Corp.",    "price": 875.20, "changePercent": 2.11 }
+    ]
+  },
+  "dataSource": {
+    "type": "yahoo-quotes",
+    "params": { "symbolsFromStore": "my-watchlist" }
+  }
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `items` | array | **yes** | `{ symbol, longName, price, changePercent }` entries. |
+| `editable` | boolean | no | Show the add/remove UI. Requires `storeKey`. |
+| `storeKey` | string | when `editable` | Key in the widget store holding the symbol array. |
+
+When paired with `dataSource: { type: "yahoo-quotes", params: { symbolsFromStore: "<key>" } }`, the server reads the current symbol list from the store and re-hydrates price/change on every tick.
+
+#### `sector-list` — Ranked sector performance
+
+```json
+{
+  "slug": "sectors",
+  "type": "sector-list",
+  "title": "Sector Performance",
+  "content": {
+    "items": [
+      { "symbol": "XLK", "name": "Technology",       "changePercent":  1.24 },
+      { "symbol": "XLF", "name": "Financials",       "changePercent":  0.38 },
+      { "symbol": "XLE", "name": "Energy",           "changePercent": -0.87 }
+    ]
+  }
+}
+```
+
+Best paired with `dataSource: { type: "yahoo-sectors" }`.
+
+#### `news-feed` — Searchable headline list
+
+```json
+{
+  "slug": "news",
+  "type": "news-feed",
+  "title": "Market News",
+  "colSpan": 2,
+  "rowSpan": 2,
+  "content": {
+    "searchable": true,
+    "items": [
+      { "title": "Fed holds rates", "description": "Central bank keeps target range...", "link": "https://...", "source": "Reuters", "pubDate": "2026-03-25T14:20:00Z" }
+    ]
+  }
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `items` | array | **yes** | Headlines — `{ title, description, link, source, pubDate }`. |
+| `searchable` | boolean | no | Show a client-side search bar. Default: true. |
+
+Pair with `dataSource: { type: "google-news-rss", params: { lang: "en" } }`.
+
+#### `oracle-feed` — Mixed headline/tweet feed with Polymarket chips
+
+```json
+{
+  "slug": "oracle",
+  "type": "oracle-feed",
+  "title": "Oracle",
+  "colSpan": 2,
+  "rowSpan": 3,
+  "content": {
+    "items": [
+      {
+        "kind": "headline",
+        "title": "OPEC+ extends production cuts",
+        "summary": "Member states agreed to...",
+        "source": "Bloomberg",
+        "sourceLogo": "https://...",
+        "link": "https://...",
+        "pubDate": "2026-03-25T12:00:00Z",
+        "image": "https://...",
+        "markets": [
+          { "question": "Oil > $90 by Q3?", "url": "https://polymarket.com/...", "pct": 34, "direction": "up", "volume": 120000 }
+        ]
+      },
+      {
+        "kind": "tweet",
+        "text": "Big day for tech earnings. Watching MSFT and GOOGL closely.",
+        "source": "Jim Cramer",
+        "authorHandle": "jimcramer",
+        "authorName": "Jim Cramer",
+        "sourceLogo": "https://...",
+        "link": "https://x.com/jimcramer/status/...",
+        "pubDate": "2026-03-25T11:00:00Z",
+        "engagement": { "likes": 1400, "retweets": 320, "replies": 180 },
+        "markets": []
+      }
+    ]
+  }
+}
+```
+
+`items[].kind` is `"headline"`, `"tweet"`, or `"substack"`. Tweet cards render avatar + handle + engagement counts; headline/substack cards render logo + source + summary. `markets` attaches Polymarket-style outcome chips with `question`, `url`, `pct` (0–100), `direction` (`up`/`down`), and `volume`. Pair with `dataSource: { type: "thespread-oracle" }` to auto-populate from [thespread.news](https://thespread.news).
+
+#### `movers` — Two-column gainers / losers
+
+```json
+{
+  "slug": "movers",
+  "type": "movers",
+  "title": "Top Movers",
+  "content": {
+    "gainers": [
+      { "symbol": "NVDA", "longName": "NVIDIA", "price": 875.20, "changePercent": 2.11 }
+    ],
+    "losers": [
+      { "symbol": "INTC", "longName": "Intel",  "price":  29.15, "changePercent": -1.42 }
+    ],
+    "limit": 5
+  }
+}
+```
+
+Pair with `dataSource: { type: "yahoo-movers" }`.
+
+#### `trending` — Ranked ticker list
+
+```json
+{
+  "slug": "trending",
+  "type": "trending",
+  "title": "Trending",
+  "content": {
+    "items": [
+      { "rank": 1, "symbol": "NVDA", "longName": "NVIDIA",  "changePercent":  2.11 },
+      { "rank": 2, "symbol": "TSLA", "longName": "Tesla",   "changePercent": -1.80 },
+      { "rank": 3, "symbol": "AMD",  "longName": "AMD",     "changePercent":  1.42 }
+    ]
+  }
+}
+```
+
+`rank` is optional (falls back to array index + 1).
+
+#### `asset-highlights` — Labeled price rows
+
+```json
+{
+  "slug": "assets",
+  "type": "asset-highlights",
+  "title": "Asset Highlights",
+  "content": {
+    "items": [
+      { "label": "Crude Oil",   "symbol": "CL=F",    "value":  82.45, "unit": "$",   "changePercent":  0.65 },
+      { "label": "Bitcoin",     "symbol": "BTC-USD", "value": 64210,  "unit": "$",   "changePercent":  1.22 },
+      { "label": "10Y Treasury", "symbol": "^TNX",   "value":   4.28, "unit": "%",   "changePercent": -0.15 }
+    ]
+  }
+}
+```
+
+`unit` accepts `"$"` / `"usd"` (formats as USD) or `"%"` / `"pct"` (appends %), or any other string (passed through).
+
+#### `chat-thread` — Conversational log with optional input
+
+```json
+{
+  "slug": "chat",
+  "type": "chat-thread",
+  "title": "Market Chat",
+  "colSpan": 2,
+  "rowSpan": 2,
+  "content": {
+    "messages": [
+      { "role": "user",      "text": "What moved NVDA today?", "time": "2026-03-25T14:00:00Z" },
+      { "role": "assistant", "text": "**NVDA** rallied **+2.1%** on strong AI-chip demand.", "time": "2026-03-25T14:00:05Z", "actions": [ { "type": "news_filter", "label": "AI stocks" } ] }
+    ],
+    "placeholder": "Ask about the market...",
+    "endpoint": "/financial-dashboard/api/chat"
+  }
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `messages[].role` | `"user"` / `"assistant"` | **yes** | Speaker. |
+| `messages[].text` | string | **yes** | Message body (assistant text is rendered as markdown). |
+| `messages[].time` | ISO 8601 | no | Timestamp shown as "X min ago". |
+| `messages[].actions` | array | no | Badge labels shown under the message (e.g. `[{ "type": "watchlist_add", "symbol": "AAPL" }]`). |
+| `placeholder` | string | no | Input placeholder. |
+| `endpoint` | string (URL/path) | no | If set, renders an input bar that POSTs `{ message }` to this endpoint when the user submits. Omit for a read-only log. |
+
+The chat-thread is intentionally stateless server-side: your agent owns conversation state and pushes the updated `messages` array via `/api/push` after each exchange.
+
+---
+
 ### Advanced Widget Features
 
 These three features can be added to the `content` object of **any widget** and can be combined freely with each other.
@@ -642,6 +922,95 @@ Mark specific data points on `line`, `area`, `candlestick`, or `ohlc` charts wit
 
 ---
 
+### Data Sources
+
+Any widget can carry an optional `dataSource` object. The server polls that source on a schedule and merges the fetched payload over the widget's static `content`, then broadcasts a real-time update over WebSocket. This means you can declare a widget *once* (e.g. a `sparkline-card` of major indices) and let the backend keep it fresh.
+
+```json
+{
+  "slug": "indices",
+  "type": "sparkline-card",
+  "title": "Major Indices",
+  "colSpan": 4,
+  "content": { "cards": [] },
+  "dataSource": {
+    "type": "yahoo-indices",
+    "params": { "range": "5d" },
+    "refreshMs": 60000
+  }
+}
+```
+
+**Top-level fields:**
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `type` | string | **yes** | Fetcher registry key (see table below). |
+| `params` | object | no | Type-specific parameters. |
+| `refreshMs` | integer | no | Poll interval in ms (minimum 10 000). Default 60 000. |
+
+**Fetcher types and the widget types they pair with:**
+
+| `type` | `params` | Best paired with | Output shape |
+|--------|----------|------------------|--------------|
+| `yahoo-quotes` | `{ symbols: string[] \| string, symbolsFromStore?: string, range?: "1d"\|"5d"\|"1mo"\|"6mo"\|"ytd" }` | `sparkline-card`, `watchlist`, `ticker-tape` | `{ cards, items }` |
+| `yahoo-indices` | `{ range? }` | `sparkline-card`, `ticker-tape` | `{ cards }` — Dow, S&P, Nasdaq, Russell, VIX |
+| `yahoo-sectors` | `{ range? }` | `sector-list` | `{ items }` — 11 SPDR sector ETFs, sorted |
+| `yahoo-movers` | `{ range?, limit? }` | `movers`, `trending` | `{ gainers, losers, items, limit }` |
+| `google-news-rss` | `{ lang?: "en"\|"zh", limit?: number }` | `news-feed` | `{ items, searchable }` |
+| `thespread-oracle` | `{ limit?: number }` | `oracle-feed` | `{ items }` |
+| `anthropic-analysis` | `{ lang?: "en"\|"zh" }` | `markdown` | `{ markdown, generatedAt }` — 2-3 section analysis, ~200 words |
+| `anthropic-summary` | `{ lang?: "en"\|"zh" }` | `markdown` | `{ markdown, generatedAt }` — 2-4 sentence paragraph |
+| `widget-store` | `{ key: string, editable?: boolean }` | `watchlist` | `{ items, storeKey, editable }` |
+
+**`symbolsFromStore` chaining.** The `yahoo-quotes` fetcher can read its symbol list from a `widget-store` key, which lets an editable `watchlist` and a dependent `sparkline-card` stay in sync:
+
+```json
+// 1) Seed the store
+PUT /ai-dashboard/api/widget-store/my-watchlist
+{ "value": ["AAPL", "MSFT", "NVDA"] }
+
+// 2) Push both widgets — they share the same source of truth
+POST /ai-dashboard/api/push
+{
+  "widgets": [
+    { "slug": "watchlist", "type": "watchlist", "title": "My Watchlist", "content": { "editable": true, "storeKey": "my-watchlist", "items": [] },
+      "dataSource": { "type": "yahoo-quotes", "params": { "symbolsFromStore": "my-watchlist" } } },
+    { "slug": "charts",    "type": "sparkline-card", "title": "Sparklines", "content": { "cards": [] },
+      "dataSource": { "type": "yahoo-quotes", "params": { "symbolsFromStore": "my-watchlist" } } }
+  ]
+}
+```
+
+**Required environment variables.** `anthropic-analysis` and `anthropic-summary` require `ANTHROPIC_API_KEY`. Optional `AI_DASHBOARD_MODEL` overrides the model (default `claude-sonnet-4-6`). All other fetchers are keyless.
+
+**Force a refresh.**
+
+```
+POST /ai-dashboard/api/widgets/:slug/refresh        (token required)
+```
+
+Immediately re-fetches the widget's `dataSource` and broadcasts an update. Returns `400` if the widget has no `dataSource`.
+
+---
+
+### Widget Store
+
+A small key/value JSON store the server exposes so stateful widgets can persist across reloads. The `watchlist` widget uses this to save the user's symbol list.
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| `GET` | `/ai-dashboard/api/widget-store/:key` | Public | Read the stored value. 404 if missing. |
+| `PUT` | `/ai-dashboard/api/widget-store/:key` | Token | Set the value — body: `{ "value": <any JSON> }`. |
+| `POST` | `/ai-dashboard/api/widget-store/:key/append` | Token | Append to an array — body: `{ "item": <any JSON> }`. |
+| `DELETE` | `/ai-dashboard/api/widget-store/:key/item` | Token | Remove matching item — body: `{ "value": <any JSON> }`. |
+| `POST` | `/ai-dashboard/api/widget-store/:key/append-public` | Public | Ticker-only variant used by the `watchlist` UI — body: `{ "item": "<ticker>" }`. Rejects non-ticker strings. |
+| `DELETE` | `/ai-dashboard/api/widget-store/:key/item-public?value=<ticker>` | Public | Ticker-only remove used by the UI. |
+
+The public `append-public` / `item-public` endpoints accept only short alphanumeric ticker-like strings (1–12 chars, `A-Z0-9.^=-`), so an anonymous visitor can only mutate the watchlist symbol list — not arbitrary keys.
+
+---
+
 ### Widget Customization
 
 Every widget supports optional `style`, `icon`, `link`, and `visible` fields:
@@ -697,6 +1066,11 @@ For granular control beyond bulk push:
 | `DELETE` | `/ai-dashboard/api/widgets/:id` | Token | Delete by database ID. |
 | `GET` | `/ai-dashboard/api/meta` | Public | Get dashboard metadata. |
 | `PUT` | `/ai-dashboard/api/meta` | Token | Upsert metadata. |
+| `POST` | `/ai-dashboard/api/widgets/:slug/refresh` | Token | Force-refresh a widget's `dataSource`. |
+| `GET` | `/ai-dashboard/api/widget-store/:key` | Public | Read a widget-store value. |
+| `PUT` | `/ai-dashboard/api/widget-store/:key` | Token | Set a widget-store value. |
+| `POST` | `/ai-dashboard/api/widget-store/:key/append` | Token | Append an item to an array value. |
+| `DELETE` | `/ai-dashboard/api/widget-store/:key/item` | Token | Remove matching item(s) from an array value. |
 
 ---
 
@@ -950,3 +1324,121 @@ When using `style` on a widget, these combinations produce consistent results:
 - **Sentence case for values and labels:** stat values, KV pairs, list items
 - **Playfair Display** is used for the title — prefer clean nouns over verbs
 - Use `icon` to add visual hierarchy without adding words: `"icon": "📊"` next to "Revenue"
+
+---
+
+## Worked Example: Financial Dashboard via API Alone
+
+This single `POST /ai-dashboard/api/push` payload stands up a finance-style dashboard that mirrors the `financial-dashboard` module's panels — using only the generic widget types and dataSources documented above.
+
+```json
+{
+  "meta": { "title": "Markets", "subtitle": "Live market overview", "layoutCols": 4 },
+  "clearWidgets": true,
+  "widgets": [
+    {
+      "slug": "tape",
+      "type": "ticker-tape",
+      "title": "Ticker",
+      "colSpan": 4,
+      "order": 1,
+      "content": { "items": [] },
+      "dataSource": { "type": "yahoo-quotes", "params": { "symbols": ["^GSPC","^DJI","^IXIC","^RUT","^VIX","BTC-USD","CL=F"] } }
+    },
+    {
+      "slug": "indices",
+      "type": "sparkline-card",
+      "title": "Major Indices",
+      "colSpan": 4,
+      "order": 2,
+      "content": { "cards": [] },
+      "dataSource": { "type": "yahoo-indices", "params": { "range": "5d" } }
+    },
+    {
+      "slug": "watchlist",
+      "type": "watchlist",
+      "title": "Watchlist",
+      "colSpan": 1,
+      "rowSpan": 2,
+      "order": 3,
+      "content": { "editable": true, "storeKey": "my-watchlist", "items": [] },
+      "dataSource": { "type": "yahoo-quotes", "params": { "symbolsFromStore": "my-watchlist" } }
+    },
+    {
+      "slug": "sectors",
+      "type": "sector-list",
+      "title": "Sectors",
+      "colSpan": 1,
+      "rowSpan": 2,
+      "order": 4,
+      "content": { "items": [] },
+      "dataSource": { "type": "yahoo-sectors" }
+    },
+    {
+      "slug": "movers",
+      "type": "movers",
+      "title": "Top Movers",
+      "colSpan": 1,
+      "order": 5,
+      "content": { "gainers": [], "losers": [] },
+      "dataSource": { "type": "yahoo-movers" }
+    },
+    {
+      "slug": "trending",
+      "type": "trending",
+      "title": "Trending",
+      "colSpan": 1,
+      "order": 6,
+      "content": { "items": [] },
+      "dataSource": { "type": "yahoo-movers" }
+    },
+    {
+      "slug": "summary",
+      "type": "markdown",
+      "title": "Market Summary",
+      "colSpan": 2,
+      "order": 7,
+      "content": { "markdown": "_generating…_" },
+      "dataSource": { "type": "anthropic-summary", "params": { "lang": "en" }, "refreshMs": 900000 }
+    },
+    {
+      "slug": "analysis",
+      "type": "markdown",
+      "title": "Market Analysis",
+      "colSpan": 2,
+      "rowSpan": 2,
+      "order": 8,
+      "content": { "markdown": "_generating…_" },
+      "dataSource": { "type": "anthropic-analysis", "params": { "lang": "en" }, "refreshMs": 1800000 }
+    },
+    {
+      "slug": "news",
+      "type": "news-feed",
+      "title": "Market News",
+      "colSpan": 2,
+      "rowSpan": 2,
+      "order": 9,
+      "content": { "items": [], "searchable": true },
+      "dataSource": { "type": "google-news-rss", "params": { "lang": "en", "limit": 20 } }
+    },
+    {
+      "slug": "oracle",
+      "type": "oracle-feed",
+      "title": "Oracle",
+      "colSpan": 4,
+      "order": 10,
+      "content": { "items": [] },
+      "dataSource": { "type": "thespread-oracle" }
+    }
+  ]
+}
+```
+
+Seed the watchlist once so the `yahoo-quotes` fetcher has symbols to load on first hydrate:
+
+```
+PUT /ai-dashboard/api/widget-store/my-watchlist
+{ "value": ["AAPL", "MSFT", "NVDA", "AMD"] }
+```
+
+After the push, the backend immediately hydrates every `dataSource`, then re-polls each on its own schedule. The UI updates in real time via WebSocket.
