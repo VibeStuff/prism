@@ -660,7 +660,7 @@ const FinancialDashboardModule: AppModule = {
                         pubDate: String(item.pubDate ?? ''),
                         source,
                     }
-                })
+                }).sort((a, b) => new Date(b.pubDate).getTime() - new Date(a.pubDate).getTime())
 
                 cacheSet(cacheKey, items)
                 return items
