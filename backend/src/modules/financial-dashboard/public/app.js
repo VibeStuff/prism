@@ -21,7 +21,7 @@ const STRINGS = {
     movers: 'Top Movers',
     gainers: 'Gainers',
     losers: 'Losers',
-    oracle: 'Polymarket',
+    oracle: 'Market News',
     trending: 'Trending',
     aiAnalysis: 'AI Analysis',
     chatPlaceholder: 'Ask AI… add TSLA, focus news on Fed…',
@@ -57,7 +57,7 @@ const STRINGS = {
     errData:   '⚠ Data unavailable',
     errNews:   '⚠ News unavailable',
     errMovers: '⚠ No mover data available',
-    errOracle: '⚠ Unable to load Polymarket',
+    errOracle: '⚠ Unable to load market news',
     errNoData: '⚠ No data',
     errAsset:  '⚠ Asset data unavailable',
     noSummaryYet: 'No summary yet — click ↻ to generate one.',
@@ -77,7 +77,7 @@ const STRINGS = {
     movers: '漲跌幅排行',
     gainers: '漲幅榜',
     losers: '跌幅榜',
-    oracle: 'Polymarket 賭注市場',
+    oracle: '即時快訊',
     trending: '熱門股',
     aiAnalysis: 'AI 分析',
     chatPlaceholder: '詢問 AI… 新增 TSLA、聚焦聯準會新聞…',
@@ -113,7 +113,7 @@ const STRINGS = {
     errData:   '⚠ 資料無法取得',
     errNews:   '⚠ 新聞無法取得',
     errMovers: '⚠ 無漲跌幅資料',
-    errOracle: '⚠ 無法載入 Polymarket',
+    errOracle: '⚠ 無法載入即時快訊',
     errNoData: '⚠ 無資料',
     errAsset:  '⚠ 資產資料無法取得',
     noSummaryYet: '尚無摘要 — 點擊 ↻ 生成',
@@ -827,7 +827,7 @@ function renderMovers(movers) {
   </div>`
 }
 
-// ── The Oracle (Polymarket Substack) ─────────────────────────────────────────
+// ── Market News (Breaking Headlines) ─────────────────────────────────────────
 
 function renderOracle(items) {
   const body = document.getElementById('oracle-body')
@@ -837,11 +837,10 @@ function renderOracle(items) {
   }
 
   body.innerHTML = `<div class="oracle-list">${
-    items.slice(0, 4).map(item =>
+    items.slice(0, 6).map(item =>
       `<a class="oracle-item" href="${esc(item.link)}" target="_blank" rel="noopener noreferrer">
         <div class="oracle-title">${esc(item.title)}</div>
-        ${item.excerpt ? `<div class="oracle-excerpt">${esc(item.excerpt)}</div>` : ''}
-        <div class="oracle-meta">${esc(timeAgo(item.pubDate))}</div>
+        <div class="oracle-meta">${item.excerpt ? `${esc(item.excerpt)} · ` : ''}${esc(timeAgo(item.pubDate))}</div>
       </a>`
     ).join('')
   }</div>`

@@ -905,7 +905,18 @@ const FinancialDashboardModule: AppModule = {
             }
         })
 
-        // ── Oracle (Polymarket Substack) ─────────────────────────────────────
+        // ── Market News (Breaking financial headlines) ────────────────────────
+        const MARKET_NEWS_FEEDS: Record<string, { url: string; defaultSource: string }> = {
+            en: {
+                url: 'https://news.google.com/rss/search?q=stock+market+OR+wall+street+OR+fed+OR+earnings+when:1d&hl=en-US&gl=US&ceid=US:en',
+                defaultSource: 'Google News',
+            },
+            zh: {
+                url: 'https://news.google.com/rss/search?q=stock+market+OR+wall+street+OR+fed+OR+earnings+when:1d&hl=zh-TW&gl=TW&ceid=TW:zh-Hant',
+                defaultSource: 'Google 新聞',
+            },
+        }
+
         server.get(`${prefix}/api/oracle`, { config: { public: true } } as never, async (_req, reply) => {
             const lang = String((_req as any).query?.lang ?? 'en')
             const cacheKey = `oracle:${lang}`
@@ -913,51 +924,53 @@ const FinancialDashboardModule: AppModule = {
             const cached = cacheGet<OracleItem[]>(cacheKey)
             if (cached) return cached
 
-            // Always fetch the English feed first (shared across locales)
-            let items = cacheGet<OracleItem[]>('oracle:en')
-            if (!items) {
-                try {
-                    const res = await fetch('https://polymarket.substack.com/feed', {
-                        headers: { 'User-Agent': 'Mozilla/5.0 (compatible; Prism/1.0)' },
-                        signal: AbortSignal.timeout(8000),
-                    })
-                    if (!res.ok) throw new Error(`Substack feed returned ${res.status}`)
+            const feed = MARKET_NEWS_FEEDS[lang] ?? MARKET_NEWS_FEEDS.en
 
-                    const xml = await res.text()
-                    const parser = new XMLParser({ ignoreAttributes: false })
-                    const parsed = parser.parse(xml) as {
-                        rss?: {
-                            channel?: {
-                                item?: Array<{
-                                    title?: string
-                                    link?: string
-                                    description?: string
-                                    pubDate?: string
-                                }>
-                            }
+            try {
+                const res = await fetch(feed.url, {
+                    headers: { 'User-Agent': 'Mozilla/5.0 (compatible; Prism/1.0)' },
+                    signal: AbortSignal.timeout(8000),
+                })
+                if (!res.ok) throw new Error(`Market news feed returned ${res.status}`)
+
+                const xml = await res.text()
+                const parser = new XMLParser({ ignoreAttributes: false })
+                const parsed = parser.parse(xml) as {
+                    rss?: {
+                        channel?: {
+                            item?: Array<{
+                                title?: string
+                                link?: string
+                                description?: string
+                                pubDate?: string
+                                source?: string | { '#text'?: string }
+                            }>
                         }
                     }
-
-                    items = (parsed?.rss?.channel?.item ?? []).slice(0, 5).map(item => ({
-                        title: String(item.title ?? ''),
-                        link: String(item.link ?? ''),
-                        excerpt: String(item.description ?? '').replace(/<[^>]+>/g, '').replace(/&nbsp;/g, ' ').trim().slice(0, 160),
-                        pubDate: String(item.pubDate ?? ''),
-                    })).sort((a, b) => new Date(b.pubDate).getTime() - new Date(a.pubDate).getTime())
-
-                    cacheSet('oracle:en', items)
-                } catch (err) {
-                    return reply.code(502).send({ error: 'Failed to fetch oracle feed', detail: String(err) })
                 }
-            }
 
-            if (lang === 'zh') {
-                const translated = await translateOracleItems(items)
-                cacheSet('oracle:zh', translated)
-                return translated
-            }
+                const items = (parsed?.rss?.channel?.item ?? []).slice(0, 8).map(item => {
+                    const rawSource = item.source
+                    const source = typeof rawSource === 'string'
+                        ? rawSource
+                        : (rawSource?.['#text'] ?? feed.defaultSource)
+                    let title = String(item.title ?? '')
+                    if (source && title.endsWith(` - ${source}`)) {
+                        title = title.slice(0, -(` - ${source}`).length)
+                    }
+                    return {
+                        title,
+                        link: String(item.link ?? ''),
+                        excerpt: source,
+                        pubDate: String(item.pubDate ?? ''),
+                    }
+                }).sort((a, b) => new Date(b.pubDate).getTime() - new Date(a.pubDate).getTime())
 
-            return items
+                cacheSet(cacheKey, items)
+                return items
+            } catch (err) {
+                return reply.code(502).send({ error: 'Failed to fetch market news', detail: String(err) })
+            }
         })
 
         // ── AI Analysis: helper to generate fresh analysis ───────────────────
