@@ -720,6 +720,47 @@ const FinancialDashboardModule: AppModule = {
             }
         })
 
+        // ── Oracle (Polymarket Substack) ─────────────────────────────────────
+        server.get(`${prefix}/api/oracle`, { config: { public: true } } as never, async (_req, reply) => {
+            const cached = cacheGet<{ title: string; link: string; excerpt: string; pubDate: string }[]>('oracle')
+            if (cached) return cached
+
+            try {
+                const res = await fetch('https://polymarket.substack.com/feed', {
+                    headers: { 'User-Agent': 'Mozilla/5.0 (compatible; Prism/1.0)' },
+                    signal: AbortSignal.timeout(8000),
+                })
+                if (!res.ok) throw new Error(`Substack feed returned ${res.status}`)
+
+                const xml = await res.text()
+                const parser = new XMLParser({ ignoreAttributes: false })
+                const parsed = parser.parse(xml) as {
+                    rss?: {
+                        channel?: {
+                            item?: Array<{
+                                title?: string
+                                link?: string
+                                description?: string
+                                pubDate?: string
+                            }>
+                        }
+                    }
+                }
+
+                const items = (parsed?.rss?.channel?.item ?? []).slice(0, 5).map(item => ({
+                    title: String(item.title ?? ''),
+                    link: String(item.link ?? ''),
+                    excerpt: String(item.description ?? '').replace(/<[^>]+>/g, '').replace(/&nbsp;/g, ' ').trim().slice(0, 160),
+                    pubDate: String(item.pubDate ?? ''),
+                })).sort((a, b) => new Date(b.pubDate).getTime() - new Date(a.pubDate).getTime())
+
+                cacheSet('oracle', items)
+                return items
+            } catch (err) {
+                return reply.code(502).send({ error: 'Failed to fetch oracle feed', detail: String(err) })
+            }
+        })
+
         // ── AI Analysis: helper to generate fresh analysis ───────────────────
         const aiLog = (level: 'INFO' | 'WARN' | 'ERROR', context: string, msg: string, detail?: unknown) => {
             const tag = `[AI:${context}]`

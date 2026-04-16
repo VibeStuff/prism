@@ -613,6 +613,101 @@ body {
 }
 
 /* ═══════════════════════════════════════════════════════
+   PANEL TOGGLE
+═══════════════════════════════════════════════════════ */
+.fd-card-header {
+  margin-bottom: 14px;
+}
+
+.panel-toggle {
+  display: inline-flex;
+  align-items: center;
+  background: rgba(180, 145, 60, 0.08);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 2px;
+  gap: 1px;
+}
+
+.panel-toggle-btn {
+  padding: 4px 10px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  font-family: 'Inter', sans-serif;
+  font-size: 0.68rem;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: background var(--t) var(--ease), color var(--t) var(--ease), box-shadow var(--t) var(--ease);
+  white-space: nowrap;
+  line-height: 1.4;
+  outline: none;
+}
+
+.panel-toggle-btn.active {
+  background: var(--cream);
+  color: var(--amber);
+  box-shadow: 0 1px 4px rgba(60, 30, 0, 0.10);
+  font-weight: 600;
+}
+
+.panel-toggle-btn:hover:not(.active) {
+  color: var(--text-mid);
+  background: rgba(255, 252, 240, 0.5);
+}
+
+/* ═══════════════════════════════════════════════════════
+   THE ORACLE (Substack Feed)
+═══════════════════════════════════════════════════════ */
+.oracle-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.oracle-item {
+  padding: 10px 6px;
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+  text-decoration: none;
+  display: block;
+  transition: background var(--t) var(--ease);
+  border-radius: 6px;
+}
+
+.oracle-item:last-child { border-bottom: none; }
+.oracle-item:hover { background: var(--amber-light); }
+
+.oracle-title {
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--text-dark);
+  line-height: 1.4;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  margin-bottom: 3px;
+}
+
+.oracle-excerpt {
+  font-size: 0.72rem;
+  color: var(--text-mid);
+  line-height: 1.4;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin-bottom: 3px;
+}
+
+.oracle-meta {
+  font-size: 0.66rem;
+  color: var(--text-muted);
+}
+
+/* ═══════════════════════════════════════════════════════
    AI ANALYSIS
 ═══════════════════════════════════════════════════════ */
 .analysis-text {
