@@ -537,38 +537,46 @@ const FinancialDashboardModule: AppModule = {
         )
 
         // ── Indices ─────────────────────────────────────────────────────────
-        server.get(`${prefix}/api/indices`, { config: { public: true } } as never, async (_req, _reply) => {
+        server.get(`${prefix}/api/indices`, { config: { public: true } } as never, async (_req, reply) => {
             const cached = cacheGet<QuoteData[]>('indices')
             if (cached) return cached
 
-            const results = await Promise.allSettled(INDEX_SYMBOLS.map(fetchYahooQuote))
-            const data = results
-                .map((r, i) => r.status === 'fulfilled' ? r.value : null)
-                .filter((q): q is QuoteData => q !== null)
+            try {
+                const results = await Promise.allSettled(INDEX_SYMBOLS.map(fetchYahooQuote))
+                const data = results
+                    .map((r, i) => r.status === 'fulfilled' ? r.value : null)
+                    .filter((q): q is QuoteData => q !== null)
 
-            cacheSet('indices', data)
-            return data
+                if (data.length) cacheSet('indices', data)
+                return data
+            } catch (err) {
+                return reply.code(502).send({ error: 'Failed to fetch indices', detail: String(err) })
+            }
         })
 
         // ── Sectors ─────────────────────────────────────────────────────────
-        server.get(`${prefix}/api/sectors`, { config: { public: true } } as never, async (_req, _reply) => {
+        server.get(`${prefix}/api/sectors`, { config: { public: true } } as never, async (_req, reply) => {
             const cached = cacheGet<QuoteData[]>('sectors')
             if (cached) return cached
 
-            const etfs = Object.keys(SECTOR_ETFS)
-            const results = await Promise.allSettled(etfs.map(fetchYahooQuote))
-            const data = results
-                .map((r, i) => {
-                    if (r.status === 'fulfilled') {
-                        return { ...r.value, longName: SECTOR_ETFS[etfs[i]] ?? r.value.longName }
-                    }
-                    return null
-                })
-                .filter((q): q is QuoteData => q !== null)
-                .sort((a, b) => b.changePercent - a.changePercent)
+            try {
+                const etfs = Object.keys(SECTOR_ETFS)
+                const results = await Promise.allSettled(etfs.map(fetchYahooQuote))
+                const data = results
+                    .map((r, i) => {
+                        if (r.status === 'fulfilled') {
+                            return { ...r.value, longName: SECTOR_ETFS[etfs[i]] ?? r.value.longName }
+                        }
+                        return null
+                    })
+                    .filter((q): q is QuoteData => q !== null)
+                    .sort((a, b) => b.changePercent - a.changePercent)
 
-            cacheSet('sectors', data)
-            return data
+                if (data.length) cacheSet('sectors', data)
+                return data
+            } catch (err) {
+                return reply.code(502).send({ error: 'Failed to fetch sectors', detail: String(err) })
+            }
         })
 
         // ── News ─────────────────────────────────────────────────────────────
@@ -634,30 +642,34 @@ const FinancialDashboardModule: AppModule = {
             const cached = cacheGet<{ gainers: QuoteData[]; losers: QuoteData[] }>('movers')
             if (cached) return cached
 
-            const results = await Promise.allSettled(
-                MOVERS_SYMBOLS.map(sym => {
-                    const cacheKey = `quote:${sym}`
-                    const cachedQuote = cacheGet<QuoteData>(cacheKey)
-                    if (cachedQuote) return Promise.resolve(cachedQuote)
-                    return fetchYahooQuote(sym).then(q => { cacheSet(cacheKey, q); return q })
-                }),
-            )
+            try {
+                const results = await Promise.allSettled(
+                    MOVERS_SYMBOLS.map(sym => {
+                        const cacheKey = `quote:${sym}`
+                        const cachedQuote = cacheGet<QuoteData>(cacheKey)
+                        if (cachedQuote) return Promise.resolve(cachedQuote)
+                        return fetchYahooQuote(sym).then(q => { cacheSet(cacheKey, q); return q })
+                    }),
+                )
 
-            const quotes = results
-                .map(r => (r.status === 'fulfilled' ? r.value : null))
-                .filter((q): q is QuoteData => q !== null)
-                .sort((a, b) => Math.abs(b.changePercent) - Math.abs(a.changePercent))
+                const quotes = results
+                    .map(r => (r.status === 'fulfilled' ? r.value : null))
+                    .filter((q): q is QuoteData => q !== null)
+                    .sort((a, b) => Math.abs(b.changePercent) - Math.abs(a.changePercent))
 
-            if (!quotes.length) {
-                return reply.code(502).send({ error: 'Unable to fetch mover quotes from Yahoo Finance' })
+                if (!quotes.length) {
+                    return reply.code(502).send({ error: 'Unable to fetch mover quotes from Yahoo Finance' })
+                }
+
+                const gainers = quotes.filter(q => q.changePercent >= 0).slice(0, 5)
+                const losers = quotes.filter(q => q.changePercent < 0).slice(0, 5)
+
+                const data = { gainers, losers }
+                cacheSet('movers', data)
+                return data
+            } catch (err) {
+                return reply.code(502).send({ error: 'Failed to fetch movers', detail: String(err) })
             }
-
-            const gainers = quotes.filter(q => q.changePercent >= 0).slice(0, 5)
-            const losers = quotes.filter(q => q.changePercent < 0).slice(0, 5)
-
-            const data = { gainers, losers }
-            cacheSet('movers', data)
-            return data
         })
 
         // ── AI Analysis: helper to generate fresh analysis ───────────────────

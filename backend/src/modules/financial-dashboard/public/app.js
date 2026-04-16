@@ -354,7 +354,7 @@ async function renderWatchlist(symbols) {
       const sym = btn.dataset.sym
       try {
         await apiDelete(`/api/watchlist/${encodeURIComponent(sym)}`)
-        await loadAll()
+        await refreshWatchlist()
         toast(`Removed ${sym}`)
       } catch (err) {
         toast(err.message, 'err')
@@ -380,7 +380,7 @@ async function renderWatchlist(symbols) {
         const sym = right.querySelector('.ticker-remove').dataset.sym
         try {
           await apiDelete(`/api/watchlist/${encodeURIComponent(sym)}`)
-          await loadAll()
+          await refreshWatchlist()
           toast(`Removed ${sym}`)
         } catch (err) {
           toast(err.message, 'err')
@@ -398,6 +398,15 @@ document.getElementById('watchlist-input').addEventListener('keydown', e => {
   if (e.key === 'Enter') addWatchlistTicker()
 })
 
+async function refreshWatchlist() {
+  try {
+    const wl = await apiFetch('/api/watchlist')
+    await renderWatchlist(wl.symbols ?? [])
+  } catch {
+    document.getElementById('watchlist-body').innerHTML = `<div class="panel-error">${S.errData}</div>`
+  }
+}
+
 async function addWatchlistTicker() {
   const input = document.getElementById('watchlist-input')
   const btn   = document.getElementById('watchlist-add-btn')
@@ -408,7 +417,7 @@ async function addWatchlistTicker() {
   try {
     await apiPost('/api/watchlist', { symbol: sym })
     input.value = ''
-    await loadAll()
+    await refreshWatchlist()
     toast(`Added ${sym}`)
   } catch (err) {
     toast(err.message, 'err')
