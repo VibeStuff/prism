@@ -32,7 +32,6 @@ Thumbs.db
 
 # Claude Code local settings
 .claude/
-backend/src/modules/financial-dashboard/analysis-en.json
 backend/src/modules/financial-dashboard/analysis-zh.json
-backend/src/modules/financial-dashboard/analysis-en.json
+
 backend/src/modules/financial-dashboard/analysis-en.json
