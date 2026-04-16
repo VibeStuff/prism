@@ -359,10 +359,14 @@ function applyI18n() {
   if (lastMovers) { renderMovers(lastMovers); renderTrending(lastMovers) }
   updateStatus()
 
-  // Re-fetch news from the localized feed
+  // Re-fetch news and oracle from the localized feed
   apiFetch(`/api/news?lang=${currentLang}`)
     .then(items => { newsData = items ?? []; renderNews() })
     .catch(() => { /* keep existing news if fetch fails */ })
+
+  apiFetch(`/api/oracle?lang=${currentLang}`)
+    .then(items => { renderOracle(items) })
+    .catch(() => { /* keep existing oracle if fetch fails */ })
 
   // Load the persisted analysis for the newly selected language
   loadAnalysis()
