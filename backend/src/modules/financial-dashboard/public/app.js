@@ -194,6 +194,89 @@ function changeBadge(pct) {
   return `<span class="change-badge ${cls}">${fmtChange(pct)}</span>`
 }
 
+// ── Lightweight Markdown → HTML ──────────────────────────────────────────────
+
+function md(text) {
+  if (!text) return ''
+  // Escape HTML first, then apply markdown transforms
+  const lines = text.split('\n')
+  const out = []
+  let inList = false
+  let listType = null // 'ul' or 'ol'
+
+  for (let i = 0; i < lines.length; i++) {
+    let line = lines[i]
+
+    // Blank line — close list if open, add break
+    if (!line.trim()) {
+      if (inList) { out.push(listType === 'ol' ? '</ol>' : '</ul>'); inList = false; listType = null }
+      out.push('')
+      continue
+    }
+
+    // Horizontal rule: --- or ***
+    if (/^[-*_]{3,}\s*$/.test(line.trim())) {
+      if (inList) { out.push(listType === 'ol' ? '</ol>' : '</ul>'); inList = false; listType = null }
+      out.push('<hr class="md-hr">')
+      continue
+    }
+
+    // Headers: ### h3, ## h2, # h1
+    const hMatch = line.match(/^(#{1,4})\s+(.+)$/)
+    if (hMatch) {
+      if (inList) { out.push(listType === 'ol' ? '</ol>' : '</ul>'); inList = false; listType = null }
+      const level = hMatch[1].length
+      out.push(`<h${level} class="md-h">${inline(hMatch[2])}</h${level}>`)
+      continue
+    }
+
+    // Unordered list: - item or * item
+    const ulMatch = line.match(/^[\s]*[-*]\s+(.+)$/)
+    if (ulMatch) {
+      if (!inList || listType !== 'ul') {
+        if (inList) out.push(listType === 'ol' ? '</ol>' : '</ul>')
+        out.push('<ul class="md-list">'); inList = true; listType = 'ul'
+      }
+      out.push(`<li>${inline(ulMatch[1])}</li>`)
+      continue
+    }
+
+    // Ordered list: 1. item
+    const olMatch = line.match(/^[\s]*\d+[.)]\s+(.+)$/)
+    if (olMatch) {
+      if (!inList || listType !== 'ol') {
+        if (inList) out.push(listType === 'ol' ? '</ol>' : '</ul>')
+        out.push('<ol class="md-list">'); inList = true; listType = 'ol'
+      }
+      out.push(`<li>${inline(olMatch[1])}</li>`)
+      continue
+    }
+
+    // Regular paragraph line
+    if (inList) { out.push(listType === 'ol' ? '</ol>' : '</ul>'); inList = false; listType = null }
+    out.push(`<p>${inline(line)}</p>`)
+  }
+
+  if (inList) out.push(listType === 'ol' ? '</ol>' : '</ul>')
+
+  return out.join('\n')
+}
+
+// Inline markdown: bold, italic, code, links
+function inline(text) {
+  return esc(text)
+    // Code (backticks) — must come before bold/italic
+    .replace(/`([^`]+)`/g, '<code class="md-code">$1</code>')
+    // Bold + italic
+    .replace(/\*\*\*(.+?)\*\*\*/g, '<strong><em>$1</em></strong>')
+    // Bold
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    // Italic
+    .replace(/\*(.+?)\*/g, '<em>$1</em>')
+    // Links [text](url)
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>')
+}
+
 // ── Sparkline SVG ─────────────────────────────────────────────────────────────
 
 function renderSparkline(prices, color) {
@@ -679,13 +762,7 @@ function renderTrending(movers) {
 
 function renderAnalysis(data) {
   const body = document.getElementById('analysis-body')
-  const paragraphs = data.analysis
-    .split(/\n\n+/)
-    .map(p => p.trim())
-    .filter(Boolean)
-    .map(p => `<p>${esc(p)}</p>`)
-    .join('')
-  body.innerHTML = `<div class="analysis-text">${paragraphs}</div>
+  body.innerHTML = `<div class="analysis-text">${md(data.analysis)}</div>
     <div class="analysis-meta">${S.generatedAt(timeAgo(data.generatedAt))}</div>`
 }
 
@@ -761,13 +838,7 @@ function renderChatLog() {
       html += `<div class="chat-bubble user">${esc(msg.text)}</div>`
       html += `<div class="chat-bubble-time right">${esc(msg.time)}</div>`
     } else {
-      const paragraphs = msg.text
-        .split(/\n\n+/)
-        .map(p => p.trim())
-        .filter(Boolean)
-        .map(p => `<p>${esc(p)}</p>`)
-        .join('')
-      html += `<div class="chat-bubble assistant">${paragraphs}</div>`
+      html += `<div class="chat-bubble assistant">${md(msg.text)}</div>`
       if (msg.actions?.length) {
         html += `<div class="chat-bubble-actions">${msg.actions.join('')}</div>`
       }
