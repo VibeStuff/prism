@@ -15,6 +15,7 @@ const STRINGS = {
     sectors: 'Equity Sectors',
     marketNews: 'Market News',
     loadMore: 'Load more',
+    reloadNews: 'Reload news',
     summary: 'Market Summary',
     assets: 'Asset Highlights',
     movers: 'Top Movers',
@@ -62,6 +63,7 @@ const STRINGS = {
     sectors: '板塊表現',
     marketNews: '市場新聞',
     loadMore: '載入更多',
+    reloadNews: '重新載入新聞',
     summary: '市場摘要',
     assets: '資產亮點',
     movers: '漲跌幅排行',
@@ -227,6 +229,7 @@ function applyI18n() {
   set('title-sectors',     S.sectors)
   set('title-news',        S.marketNews)
   set('news-more-btn',     S.loadMore)
+  document.getElementById('news-reload-btn').title = S.reloadNews
   set('title-summary',     S.summary)
   set('title-assets',      S.assets)
   set('title-movers',      S.movers)
@@ -501,6 +504,19 @@ document.getElementById('news-more-btn').addEventListener('click', () => {
   newsShown = Math.min(newsShown + 5, newsData.length)
   renderNews()
 })
+
+function reloadNews() {
+  const btn = document.getElementById('news-reload-btn')
+  btn.classList.add('spinning')
+  btn.disabled = true
+  newsShown = 10
+  apiFetch(`/api/news?lang=${currentLang}`)
+    .then(items => { newsData = items ?? []; renderNews() })
+    .catch(() => { document.getElementById('news-body').innerHTML = `<div class="panel-error">${S.errNews}</div>` })
+    .finally(() => { btn.classList.remove('spinning'); btn.disabled = false })
+}
+
+document.getElementById('news-reload-btn').addEventListener('click', reloadNews)
 
 // ── Market Summary ────────────────────────────────────────────────────────────
 
