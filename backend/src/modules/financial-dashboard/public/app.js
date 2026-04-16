@@ -444,19 +444,7 @@ async function renderWatchlist(symbols) {
     </div>`
   ).join('')
 
-  body.querySelectorAll('.ticker-remove').forEach(btn => {
-    btn.addEventListener('click', async (e) => {
-      e.stopPropagation()
-      const sym = btn.dataset.sym
-      try {
-        await apiDelete(`/api/watchlist/${encodeURIComponent(sym)}`)
-        await refreshWatchlist()
-        toast(`Removed ${sym}`)
-      } catch (err) {
-        toast(err.message, 'err')
-      }
-    })
-  })
+  body.querySelectorAll('.ticker-remove').forEach(btn => attachRemoveHandler(btn))
 
   try {
     const quotes = await apiFetch(`/api/quotes?symbols=${encodeURIComponent(symbols.join(','))}`)
@@ -471,17 +459,7 @@ async function renderWatchlist(symbols) {
         ${q.error ? '' : changeBadge(q.changePercent)}
         <button type="button" class="ticker-remove" data-sym="${esc(q.symbol)}" title="Remove">✕</button>
       `
-      right.querySelector('.ticker-remove').addEventListener('click', async (e) => {
-        e.stopPropagation()
-        const sym = right.querySelector('.ticker-remove').dataset.sym
-        try {
-          await apiDelete(`/api/watchlist/${encodeURIComponent(sym)}`)
-          await refreshWatchlist()
-          toast(`Removed ${sym}`)
-        } catch (err) {
-          toast(err.message, 'err')
-        }
-      })
+      attachRemoveHandler(right.querySelector('.ticker-remove'))
     })
   } catch {
     // quotes failed — symbols still visible
@@ -513,7 +491,8 @@ async function addWatchlistTicker() {
   try {
     await apiPost('/api/watchlist', { symbol: sym })
     input.value = ''
-    await refreshWatchlist()
+    // Partial refresh: append just the new ticker instead of re-rendering everything
+    await appendWatchlistTicker(sym)
     toast(`Added ${sym}`)
   } catch (err) {
     toast(err.message, 'err')
@@ -522,6 +501,83 @@ async function addWatchlistTicker() {
     btn.disabled   = false
     input.focus()
   }
+}
+
+// Append a single ticker row with skeleton, then fetch its quote
+async function appendWatchlistTicker(sym) {
+  const body = document.getElementById('watchlist-body')
+
+  // If the body shows the "no tickers" message, clear it
+  if (!body.querySelector('.ticker-row')) {
+    body.innerHTML = ''
+  }
+
+  // Don't add duplicate
+  if (body.querySelector(`.ticker-row[data-sym="${sym}"]`)) return
+
+  // Insert skeleton row
+  const row = document.createElement('div')
+  row.className = 'ticker-row'
+  row.dataset.sym = sym
+  row.style.animation = 'fadeUp 0.3s var(--ease) both'
+  row.innerHTML = `
+    <span class="ticker-symbol">${esc(sym)}</span>
+    <span class="ticker-name skeleton" style="height:12px;width:80px"></span>
+    <span class="ticker-right">
+      <span class="ticker-price skeleton" style="height:12px;width:50px"></span>
+      <button type="button" class="ticker-remove" data-sym="${esc(sym)}" title="Remove">✕</button>
+    </span>
+  `
+  body.appendChild(row)
+  attachRemoveHandler(row.querySelector('.ticker-remove'))
+
+  // Fetch quote for just this symbol
+  try {
+    const quotes = await apiFetch(`/api/quotes?symbols=${encodeURIComponent(sym)}`)
+    const q = quotes[0]
+    if (!q || q.error) return
+
+    row.querySelector('.ticker-name').className = 'ticker-name'
+    row.querySelector('.ticker-name').textContent = q.longName ?? ''
+    const right = row.querySelector('.ticker-right')
+    right.innerHTML = `
+      <span class="ticker-price">${q.symbol === '^VIX' ? fmtPrice(q.price, true) : '$' + fmtPrice(q.price, true)}</span>
+      ${changeBadge(q.changePercent)}
+      <button type="button" class="ticker-remove" data-sym="${esc(q.symbol)}" title="Remove">✕</button>
+    `
+    attachRemoveHandler(right.querySelector('.ticker-remove'))
+  } catch {
+    // Quote fetch failed — symbol still visible with skeleton
+  }
+}
+
+function attachRemoveHandler(btn) {
+  if (!btn) return
+  btn.addEventListener('click', async (e) => {
+    e.stopPropagation()
+    const sym = btn.dataset.sym
+    try {
+      await apiDelete(`/api/watchlist/${encodeURIComponent(sym)}`)
+      // Partial refresh: just remove this row with animation
+      const row = document.getElementById('watchlist-body').querySelector(`.ticker-row[data-sym="${sym}"]`)
+      if (row) {
+        row.style.transition = 'opacity 0.2s, transform 0.2s'
+        row.style.opacity = '0'
+        row.style.transform = 'translateX(-10px)'
+        setTimeout(() => {
+          row.remove()
+          // Show empty message if no tickers left
+          const body = document.getElementById('watchlist-body')
+          if (!body.querySelector('.ticker-row')) {
+            body.innerHTML = `<div style="font-size:0.78rem;color:var(--text-muted);padding:8px 0">${S.noTickers}</div>`
+          }
+        }, 200)
+      }
+      toast(`Removed ${sym}`)
+    } catch (err) {
+      toast(err.message, 'err')
+    }
+  })
 }
 
 // ── Sectors ───────────────────────────────────────────────────────────────────
@@ -901,15 +957,27 @@ async function sendChat() {
 
     removeTypingIndicator()
 
-    let watchlistChanged = false
     const actionBadges = []
 
     for (const action of (data.actions ?? [])) {
       if (action.type === 'watchlist_add') {
-        watchlistChanged = true
+        appendWatchlistTicker(action.symbol)
         actionBadges.push(`<span class="action-badge add">+ ${esc(action.symbol)}</span>`)
       } else if (action.type === 'watchlist_remove') {
-        watchlistChanged = true
+        // Trigger the same animated removal as manual remove
+        const row = document.getElementById('watchlist-body')?.querySelector(`.ticker-row[data-sym="${action.symbol}"]`)
+        if (row) {
+          row.style.transition = 'opacity 0.2s, transform 0.2s'
+          row.style.opacity = '0'
+          row.style.transform = 'translateX(-10px)'
+          setTimeout(() => {
+            row.remove()
+            const body = document.getElementById('watchlist-body')
+            if (!body.querySelector('.ticker-row')) {
+              body.innerHTML = `<div style="font-size:0.78rem;color:var(--text-muted);padding:8px 0">${S.noTickers}</div>`
+            }
+          }, 200)
+        }
         actionBadges.push(`<span class="action-badge remove">− ${esc(action.symbol)}</span>`)
       } else if (action.type === 'news_filter') {
         newsFilter = { keywords: action.keywords, label: action.label }
@@ -933,13 +1001,6 @@ async function sendChat() {
         actions: actionBadges.length ? actionBadges : undefined,
       })
       renderChatLog()
-    }
-
-    if (watchlistChanged) {
-      try {
-        const wl = await apiFetch('/api/watchlist')
-        await renderWatchlist(wl.symbols ?? [])
-      } catch { /* non-fatal */ }
     }
   } catch (err) {
     removeTypingIndicator()
@@ -981,21 +1042,13 @@ document.getElementById('analysis-toggle').addEventListener('click', (e) => {
 // ── Main Load ─────────────────────────────────────────────────────────────────
 
 async function loadAll() {
-  const [indicesRes, sectorsRes, watchlistRes, newsRes, moversRes] = await Promise.allSettled([
-    apiFetch('/api/indices'),
-    apiFetch('/api/sectors'),
-    apiFetch('/api/watchlist'),
-    apiFetch(`/api/news?lang=${currentLang}`),
-    apiFetch('/api/movers'),
-  ])
+  // Fire all requests in parallel but render each section as soon as it arrives
+  // This gives a progressive loading feel instead of a blank page until everything completes
 
-  // Indices
-  try {
-    const indices = indicesRes.status === 'fulfilled' ? indicesRes.value : null
+  const indicesP = apiFetch('/api/indices').then(indices => {
     lastIndices = indices
     renderIndexBar(indices)
     renderSummary(indices)
-
     if (indices?.length) {
       const sp = indices.find(q => q.symbol === '^GSPC')
       if (sp) {
@@ -1004,38 +1057,43 @@ async function loadAll() {
           `S&P 500 ${dir} ${fmtChange(sp.changePercent ?? 0)} · ${new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}`
       }
     }
-  } catch { /* individual error already rendered */ }
+  }).catch(() => {
+    document.getElementById('index-bar').innerHTML = `<div class="panel-error">${S.errIndex}</div>`
+  })
 
-  // Sectors
-  try {
-    renderSectors(sectorsRes.status === 'fulfilled' ? sectorsRes.value : null)
-  } catch { document.getElementById('sectors-body').innerHTML = `<div class="panel-error">${S.errData}</div>` }
+  const sectorsP = apiFetch('/api/sectors').then(sectors => {
+    renderSectors(sectors)
+  }).catch(() => {
+    document.getElementById('sectors-body').innerHTML = `<div class="panel-error">${S.errData}</div>`
+  })
 
-  // Watchlist
-  try {
-    const wl = watchlistRes.status === 'fulfilled' ? watchlistRes.value : { symbols: [] }
+  const watchlistP = apiFetch('/api/watchlist').then(async wl => {
     await renderWatchlist(wl.symbols ?? [])
-  } catch { document.getElementById('watchlist-body').innerHTML = `<div class="panel-error">${S.errData}</div>` }
+  }).catch(() => {
+    document.getElementById('watchlist-body').innerHTML = `<div class="panel-error">${S.errData}</div>`
+  })
 
-  // News
-  try {
-    newsData = newsRes.status === 'fulfilled' ? (newsRes.value ?? []) : []
+  const newsP = apiFetch(`/api/news?lang=${currentLang}`).then(items => {
+    newsData = items ?? []
     renderNews()
-  } catch { document.getElementById('news-body').innerHTML = `<div class="panel-error">${S.errNews}</div>` }
+  }).catch(() => {
+    document.getElementById('news-body').innerHTML = `<div class="panel-error">${S.errNews}</div>`
+  })
 
-  // Movers + Trending (same data)
-  try {
-    const movers = moversRes.status === 'fulfilled' ? moversRes.value : null
+  const moversP = apiFetch('/api/movers').then(movers => {
     lastMovers = movers
     renderMovers(movers)
     renderTrending(movers)
-  } catch {
-    document.getElementById('movers-body').innerHTML   = `<div class="panel-error">${S.errData}</div>`
+  }).catch(() => {
+    document.getElementById('movers-body').innerHTML = `<div class="panel-error">${S.errData}</div>`
     document.getElementById('trending-body').innerHTML = `<div class="panel-error">${S.errData}</div>`
-  }
+  })
 
-  // Assets (independent)
+  // Assets fetch independently (has its own skeleton handling)
   renderAssets()
+
+  // Wait for all to settle before updating the status indicator
+  await Promise.allSettled([indicesP, sectorsP, watchlistP, newsP, moversP])
 
   lastRefresh = Date.now()
   updateStatus()
