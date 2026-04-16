@@ -609,6 +609,12 @@ body {
   color: var(--text-dark);
 }
 
+.md-hr {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 0.8em 0;
+}
+
 .analysis-meta {
   font-size: 0.68rem;
   color: var(--text-muted);
