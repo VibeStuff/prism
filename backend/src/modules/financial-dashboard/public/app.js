@@ -21,6 +21,7 @@ const STRINGS = {
     movers: 'Top Movers',
     gainers: 'Gainers',
     losers: 'Losers',
+    oracle: 'Polymarket',
     trending: 'Trending',
     aiAnalysis: 'AI Analysis',
     chatPlaceholder: 'Ask AI… add TSLA, focus news on Fed…',
@@ -56,6 +57,7 @@ const STRINGS = {
     errData:   '⚠ Data unavailable',
     errNews:   '⚠ News unavailable',
     errMovers: '⚠ No mover data available',
+    errOracle: '⚠ Unable to load Polymarket',
     errNoData: '⚠ No data',
     errAsset:  '⚠ Asset data unavailable',
   },
@@ -73,6 +75,7 @@ const STRINGS = {
     movers: '漲跌幅排行',
     gainers: '漲幅榜',
     losers: '跌幅榜',
+    oracle: 'Polymarket 賭注市場',
     trending: '熱門股',
     aiAnalysis: 'AI 分析',
     chatPlaceholder: '詢問 AI… 新增 TSLA、聚焦聯準會新聞…',
@@ -108,6 +111,7 @@ const STRINGS = {
     errData:   '⚠ 資料無法取得',
     errNews:   '⚠ 新聞無法取得',
     errMovers: '⚠ 無漲跌幅資料',
+    errOracle: '⚠ 無法載入 Polymarket',
     errNoData: '⚠ 無資料',
     errAsset:  '⚠ 資產資料無法取得',
   },
@@ -326,7 +330,8 @@ function applyI18n() {
   document.getElementById('news-reload-btn').title = S.reloadNews
   set('title-summary',     S.summary)
   set('title-assets',      S.assets)
-  set('title-movers',      S.movers)
+  set('toggle-movers',     S.movers)
+  set('toggle-oracle',     S.oracle)
   set('title-trending',    S.trending)
   set('title-analysis',         S.aiAnalysis)
   ph ('chat-input',             S.chatPlaceholder)
@@ -356,10 +361,14 @@ function applyI18n() {
   if (lastMovers) { renderMovers(lastMovers); renderTrending(lastMovers) }
   updateStatus()
 
-  // Re-fetch news from the localized feed
+  // Re-fetch news and oracle from the localized feed
   apiFetch(`/api/news?lang=${currentLang}`)
     .then(items => { newsData = items ?? []; renderNews() })
     .catch(() => { /* keep existing news if fetch fails */ })
+
+  apiFetch(`/api/oracle?lang=${currentLang}`)
+    .then(items => { renderOracle(items) })
+    .catch(() => { /* keep existing oracle if fetch fails */ })
 
   // Load the persisted analysis for the newly selected language
   loadAnalysis()
@@ -786,6 +795,49 @@ function renderMovers(movers) {
   </div>`
 }
 
+// ── The Oracle (Polymarket Substack) ─────────────────────────────────────────
+
+function renderOracle(items) {
+  const body = document.getElementById('oracle-body')
+  if (!items || !items.length) {
+    body.innerHTML = `<div class="panel-error">${S.errOracle}</div>`
+    return
+  }
+
+  body.innerHTML = `<div class="oracle-list">${
+    items.slice(0, 4).map(item =>
+      `<a class="oracle-item" href="${esc(item.link)}" target="_blank" rel="noopener noreferrer">
+        <div class="oracle-title">${esc(item.title)}</div>
+        ${item.excerpt ? `<div class="oracle-excerpt">${esc(item.excerpt)}</div>` : ''}
+        <div class="oracle-meta">${esc(timeAgo(item.pubDate))}</div>
+      </a>`
+    ).join('')
+  }</div>`
+}
+
+;(function initMoversToggle() {
+  const moversBody = document.getElementById('movers-body')
+  const oracleBody = document.getElementById('oracle-body')
+  const toggleMovers = document.getElementById('toggle-movers')
+  const toggleOracle = document.getElementById('toggle-oracle')
+
+  function showView(view) {
+    const isOracle = view === 'oracle'
+    moversBody.style.display = isOracle ? 'none' : ''
+    oracleBody.style.display = isOracle ? '' : 'none'
+    toggleMovers.classList.toggle('active', !isOracle)
+    toggleOracle.classList.toggle('active', isOracle)
+    localStorage.setItem('fd-movers-view', view)
+  }
+
+  toggleMovers.addEventListener('click', () => showView('movers'))
+  toggleOracle.addEventListener('click', () => showView('oracle'))
+
+  // Restore saved preference
+  const saved = localStorage.getItem('fd-movers-view')
+  if (saved === 'oracle') showView('oracle')
+})()
+
 // ── Trending ──────────────────────────────────────────────────────────────────
 
 function renderTrending(movers) {
@@ -1146,11 +1198,17 @@ async function loadAll() {
     document.getElementById('trending-body').innerHTML = `<div class="panel-error">${S.errData}</div>`
   })
 
+  const oracleP = apiFetch(`/api/oracle?lang=${currentLang}`).then(items => {
+    renderOracle(items)
+  }).catch(() => {
+    document.getElementById('oracle-body').innerHTML = `<div class="panel-error">${S.errOracle}</div>`
+  })
+
   // Assets fetch independently (has its own skeleton handling)
   renderAssets()
 
   // Wait for all to settle before updating the status indicator and ticker tape
-  await Promise.allSettled([indicesP, sectorsP, watchlistP, newsP, moversP])
+  await Promise.allSettled([indicesP, sectorsP, watchlistP, newsP, moversP, oracleP])
 
   updateTickerTape()
   lastRefresh = Date.now()

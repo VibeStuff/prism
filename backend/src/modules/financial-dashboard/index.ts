@@ -214,6 +214,110 @@ function writeAnalysis(lang: string, data: PersistedAnalysis): void {
     }
 }
 
+// ─── Oracle translation cache ────────────────────────────────────────────────
+
+interface OracleItem {
+    title: string
+    link: string
+    excerpt: string
+    pubDate: string
+}
+
+interface OracleTranslation {
+    title: string
+    excerpt: string
+}
+
+const ORACLE_TRANSLATIONS_PATH = path.join(process.cwd(), 'src', 'modules', 'financial-dashboard', 'oracle-translations.json')
+
+function readOracleTranslations(): Record<string, OracleTranslation> {
+    try {
+        if (!fs.existsSync(ORACLE_TRANSLATIONS_PATH)) return {}
+        return JSON.parse(fs.readFileSync(ORACLE_TRANSLATIONS_PATH, 'utf-8')) as Record<string, OracleTranslation>
+    } catch {
+        return {}
+    }
+}
+
+function writeOracleTranslations(cache: Record<string, OracleTranslation>): void {
+    try {
+        fs.writeFileSync(ORACLE_TRANSLATIONS_PATH, JSON.stringify(cache, null, 2), 'utf-8')
+    } catch {
+        // silently fail
+    }
+}
+
+async function translateOracleItems(items: OracleItem[]): Promise<OracleItem[]> {
+    const apiKey = process.env.ANTHROPIC_API_KEY
+    if (!apiKey) return items
+
+    const cache = readOracleTranslations()
+    const untranslated = items.filter(item => !cache[item.link])
+
+    if (untranslated.length === 0) {
+        return items.map(item => ({
+            ...item,
+            title: cache[item.link].title,
+            excerpt: cache[item.link].excerpt,
+        }))
+    }
+
+    // Batch translate all new items in a single API call
+    const prompt = untranslated.map((item, i) =>
+        `[${i + 1}]\nTitle: ${item.title}\nExcerpt: ${item.excerpt}`
+    ).join('\n\n')
+
+    try {
+        const model = process.env.FINANCIAL_DASHBOARD_MODEL ?? 'claude-sonnet-4-6'
+        const res = await fetch('https://api.anthropic.com/v1/messages', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'x-api-key': apiKey,
+                'anthropic-version': '2023-06-01',
+            },
+            body: JSON.stringify({
+                model,
+                max_tokens: 1024,
+                system: 'Translate the following article titles and excerpts to Traditional Chinese (繁體中文). Keep the same numbered format. Return ONLY the translations in this exact format for each item:\n[number]\nTitle: translated title\nExcerpt: translated excerpt',
+                messages: [{ role: 'user', content: prompt }],
+            }),
+            signal: AbortSignal.timeout(15000),
+        })
+
+        if (!res.ok) return items
+
+        const data = await res.json() as { content?: Array<{ text?: string }> }
+        const text = data.content?.[0]?.text ?? ''
+
+        // Parse translations from response
+        const blocks = text.split(/\n?\[(\d+)\]\n/).filter(Boolean)
+        for (let i = 0; i < blocks.length - 1; i += 2) {
+            const idx = parseInt(blocks[i], 10) - 1
+            const block = blocks[i + 1]
+            if (idx >= 0 && idx < untranslated.length) {
+                const titleMatch = block.match(/Title:\s*(.+)/)
+                const excerptMatch = block.match(/Excerpt:\s*(.+)/)
+                if (titleMatch) {
+                    cache[untranslated[idx].link] = {
+                        title: titleMatch[1].trim(),
+                        excerpt: excerptMatch?.[1]?.trim() ?? untranslated[idx].excerpt,
+                    }
+                }
+            }
+        }
+
+        writeOracleTranslations(cache)
+    } catch {
+        return items
+    }
+
+    return items.map(item => {
+        const t = cache[item.link]
+        return t ? { ...item, title: t.title, excerpt: t.excerpt } : item
+    })
+}
+
 // ─── Yahoo Finance fetch helpers ──────────────────────────────────────────────
 
 const YF_HEADERS = {
@@ -736,6 +840,61 @@ const FinancialDashboardModule: AppModule = {
             } catch (err) {
                 return reply.code(502).send({ error: 'Failed to fetch movers', detail: String(err) })
             }
+        })
+
+        // ── Oracle (Polymarket Substack) ─────────────────────────────────────
+        server.get(`${prefix}/api/oracle`, { config: { public: true } } as never, async (_req, reply) => {
+            const lang = String((_req as any).query?.lang ?? 'en')
+            const cacheKey = `oracle:${lang}`
+
+            const cached = cacheGet<OracleItem[]>(cacheKey)
+            if (cached) return cached
+
+            // Always fetch the English feed first (shared across locales)
+            let items = cacheGet<OracleItem[]>('oracle:en')
+            if (!items) {
+                try {
+                    const res = await fetch('https://polymarket.substack.com/feed', {
+                        headers: { 'User-Agent': 'Mozilla/5.0 (compatible; Prism/1.0)' },
+                        signal: AbortSignal.timeout(8000),
+                    })
+                    if (!res.ok) throw new Error(`Substack feed returned ${res.status}`)
+
+                    const xml = await res.text()
+                    const parser = new XMLParser({ ignoreAttributes: false })
+                    const parsed = parser.parse(xml) as {
+                        rss?: {
+                            channel?: {
+                                item?: Array<{
+                                    title?: string
+                                    link?: string
+                                    description?: string
+                                    pubDate?: string
+                                }>
+                            }
+                        }
+                    }
+
+                    items = (parsed?.rss?.channel?.item ?? []).slice(0, 5).map(item => ({
+                        title: String(item.title ?? ''),
+                        link: String(item.link ?? ''),
+                        excerpt: String(item.description ?? '').replace(/<[^>]+>/g, '').replace(/&nbsp;/g, ' ').trim().slice(0, 160),
+                        pubDate: String(item.pubDate ?? ''),
+                    })).sort((a, b) => new Date(b.pubDate).getTime() - new Date(a.pubDate).getTime())
+
+                    cacheSet('oracle:en', items)
+                } catch (err) {
+                    return reply.code(502).send({ error: 'Failed to fetch oracle feed', detail: String(err) })
+                }
+            }
+
+            if (lang === 'zh') {
+                const translated = await translateOracleItems(items)
+                cacheSet('oracle:zh', translated)
+                return translated
+            }
+
+            return items
         })
 
         // ── AI Analysis: helper to generate fresh analysis ───────────────────
