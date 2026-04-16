@@ -1041,6 +1041,58 @@ document.getElementById('analysis-toggle').addEventListener('click', (e) => {
 
 // ── Main Load ─────────────────────────────────────────────────────────────────
 
+// ── Ticker Tape ──────────────────────────────────────────────────────────────
+
+function renderTickerTape(quotes) {
+  const track = document.getElementById('ticker-tape-track')
+  if (!quotes || !quotes.length) return
+
+  const items = quotes.map(q => {
+    const pct = q.changePercent ?? 0
+    const cls = pct > 0.005 ? 'up' : pct < -0.005 ? 'down' : 'flat'
+    const sign = pct >= 0 ? '+' : ''
+    const price = q.symbol === '^VIX' || q.symbol === '^TNX'
+      ? fmtPrice(q.price, true)
+      : fmtPrice(q.price, true)
+    return `<span class="ticker-tape-item">
+      <span class="ticker-tape-sym">${esc(q.symbol)}</span>
+      <span class="ticker-tape-price">${price}</span>
+      <span class="ticker-tape-change ${cls}">${sign}${fmt.format(pct)}%</span>
+    </span>`
+  }).join('<span class="ticker-tape-dot">&#x2022;</span>')
+
+  // Duplicate content so the scroll loops seamlessly
+  track.innerHTML = items + '<span class="ticker-tape-dot">&#x2022;</span>' + items
+
+  // Adjust speed based on content width — ~50px per second
+  const contentWidth = track.scrollWidth / 2
+  const duration = Math.max(20, contentWidth / 50)
+  track.style.setProperty('--ticker-duration', `${duration}s`)
+  document.getElementById('ticker-tape').style.setProperty('--ticker-duration', `${duration}s`)
+}
+
+// Collect ticker tape data from all loaded sources
+function updateTickerTape() {
+  const tapeQuotes = []
+  const seen = new Set()
+
+  function add(q) {
+    if (!q || !q.symbol || seen.has(q.symbol)) return
+    seen.add(q.symbol)
+    tapeQuotes.push(q)
+  }
+
+  // Indices first
+  if (lastIndices) lastIndices.forEach(add)
+  // Movers
+  if (lastMovers) {
+    ;(lastMovers.gainers ?? []).forEach(add)
+    ;(lastMovers.losers ?? []).forEach(add)
+  }
+
+  if (tapeQuotes.length) renderTickerTape(tapeQuotes)
+}
+
 async function loadAll() {
   // Fire all requests in parallel but render each section as soon as it arrives
   // This gives a progressive loading feel instead of a blank page until everything completes
@@ -1092,9 +1144,10 @@ async function loadAll() {
   // Assets fetch independently (has its own skeleton handling)
   renderAssets()
 
-  // Wait for all to settle before updating the status indicator
+  // Wait for all to settle before updating the status indicator and ticker tape
   await Promise.allSettled([indicesP, sectorsP, watchlistP, newsP, moversP])
 
+  updateTickerTape()
   lastRefresh = Date.now()
   updateStatus()
 }
