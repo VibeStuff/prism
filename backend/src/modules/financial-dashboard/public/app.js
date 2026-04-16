@@ -1154,9 +1154,9 @@ function renderTickerTape(quotes) {
   const dot = '<span class="ticker-tape-dot">&#x2022;</span>'
   track.innerHTML = items + dot + items + dot + items
 
-  // Adjust speed based on content width — ~50px per second
+  // Adjust speed based on content width — ~90px per second
   const contentWidth = track.scrollWidth / 3
-  const duration = Math.max(30, contentWidth / 50)
+  const duration = Math.max(15, contentWidth / 90)
   track.style.setProperty('--ticker-duration', `${duration}s`)
   document.getElementById('ticker-tape').style.setProperty('--ticker-duration', `${duration}s`)
 }
