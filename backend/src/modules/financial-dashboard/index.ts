@@ -485,7 +485,7 @@ const FinancialDashboardModule: AppModule = {
                 .replaceAll('{{ASSETS}}/style.css', `${assetPrefix}/style.css?${cacheBust}`)
                 .replaceAll('{{ASSETS}}/app.js', `${assetPrefix}/app.js?${cacheBust}`)
                 .replaceAll('{{ASSETS}}', assetPrefix)
-            reply.type('text/html').send(html)
+            reply.header('Cache-Control', 'no-cache, no-store, must-revalidate').type('text/html').send(html)
         })
 
         // ── Watchlist: Get ──────────────────────────────────────────────────
