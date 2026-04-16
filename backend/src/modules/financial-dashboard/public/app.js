@@ -14,6 +14,7 @@ const STRINGS = {
     noTickers: 'No tickers. Add one below.',
     sectors: 'Equity Sectors',
     marketNews: 'Market News',
+    headlines: 'Headlines',
     loadMore: 'Load more',
     reloadNews: 'Reload news',
     summary: 'Market Summary',
@@ -21,7 +22,7 @@ const STRINGS = {
     movers: 'Top Movers',
     gainers: 'Gainers',
     losers: 'Losers',
-    oracle: 'Market News',
+    oracle: 'Polymarket',
     trending: 'Trending',
     aiAnalysis: 'AI Analysis',
     chatPlaceholder: 'Ask AI… add TSLA, focus news on Fed…',
@@ -70,6 +71,7 @@ const STRINGS = {
     noTickers: '尚無股票，請在下方新增。',
     sectors: '板塊表現',
     marketNews: '市場新聞',
+    headlines: '頭條',
     loadMore: '載入更多',
     reloadNews: '重新載入新聞',
     summary: '市場摘要',
@@ -77,7 +79,7 @@ const STRINGS = {
     movers: '漲跌幅排行',
     gainers: '漲幅榜',
     losers: '跌幅榜',
-    oracle: '即時快訊',
+    oracle: 'Polymarket',
     trending: '熱門股',
     aiAnalysis: 'AI 分析',
     chatPlaceholder: '詢問 AI… 新增 TSLA、聚焦聯準會新聞…',
@@ -331,13 +333,13 @@ function applyI18n() {
   set('title-watchlist',   S.watchlist)
   ph ('watchlist-input',   S.addTicker)
   set('title-sectors',     S.sectors)
-  set('title-news',        S.marketNews)
   set('news-more-btn',     S.loadMore)
   document.getElementById('news-reload-btn').title = S.reloadNews
   set('title-summary',     S.summary)
   set('title-assets',      S.assets)
-  set('toggle-movers',     S.movers)
-  set('toggle-oracle',     S.oracle)
+  set('title-movers',      S.movers)
+  set('toggle-news-headlines', S.marketNews)
+  set('toggle-news-oracle', S.oracle)
   set('title-trending',    S.trending)
   set('title-analysis',         S.aiAnalysis)
   ph ('chat-input',             S.chatPlaceholder)
@@ -838,35 +840,54 @@ function renderOracle(items) {
 
   body.innerHTML = `<div class="oracle-list">${
     items.slice(0, 6).map(item =>
-      `<a class="oracle-item" href="${esc(item.link)}" target="_blank" rel="noopener noreferrer">
-        <div class="oracle-title">${esc(item.title)}</div>
-        <div class="oracle-meta">${item.excerpt ? `${esc(item.excerpt)} · ` : ''}${esc(timeAgo(item.pubDate))}</div>
-      </a>`
+      `<div class="oracle-item">
+        <a class="oracle-title-link" href="${esc(item.link)}" target="_blank" rel="noopener noreferrer">
+          <div class="oracle-title">${esc(item.title)}</div>
+          ${item.excerpt ? `<div class="oracle-excerpt">${esc(item.excerpt)}</div>` : ''}
+          <div class="oracle-meta">${esc(timeAgo(item.pubDate))}</div>
+        </a>
+        ${item.marketUrl ? `
+          <a class="oracle-market" href="${esc(item.marketUrl)}" target="_blank" rel="noopener noreferrer" title="View prediction market on Polymarket">
+            <span class="oracle-market-icon">🔮</span>
+            <span class="oracle-market-title">${esc(item.marketTitle || 'View market')}</span>
+          </a>
+        ` : ''}
+      </div>`
     ).join('')
   }</div>`
 }
 
-;(function initMoversToggle() {
-  const moversBody = document.getElementById('movers-body')
+;(function initNewsSourceToggle() {
+  const newsBody = document.getElementById('news-body')
+  const newsFooter = document.getElementById('news-footer')
+  const newsSearchRow = document.getElementById('news-search-row')
   const oracleBody = document.getElementById('oracle-body')
-  const toggleMovers = document.getElementById('toggle-movers')
-  const toggleOracle = document.getElementById('toggle-oracle')
+  const toggleHeadlines = document.getElementById('toggle-news-headlines')
+  const toggleOracle = document.getElementById('toggle-news-oracle')
 
-  function showView(view) {
-    const isOracle = view === 'oracle'
-    moversBody.style.display = isOracle ? 'none' : ''
+  let savedFooterDisplay = ''
+  function showSource(source) {
+    const isOracle = source === 'oracle'
+    if (isOracle) {
+      savedFooterDisplay = newsFooter.style.display
+      newsFooter.style.display = 'none'
+    } else {
+      newsFooter.style.display = savedFooterDisplay
+    }
+    newsBody.style.display = isOracle ? 'none' : ''
+    newsSearchRow.style.display = isOracle ? 'none' : ''
     oracleBody.style.display = isOracle ? '' : 'none'
-    toggleMovers.classList.toggle('active', !isOracle)
+    toggleHeadlines.classList.toggle('active', !isOracle)
     toggleOracle.classList.toggle('active', isOracle)
-    localStorage.setItem('fd-movers-view', view)
+    localStorage.setItem('fd-news-source', source)
   }
 
-  toggleMovers.addEventListener('click', () => showView('movers'))
-  toggleOracle.addEventListener('click', () => showView('oracle'))
+  toggleHeadlines.addEventListener('click', () => showSource('headlines'))
+  toggleOracle.addEventListener('click', () => showSource('oracle'))
 
   // Restore saved preference
-  const saved = localStorage.getItem('fd-movers-view')
-  if (saved === 'oracle') showView('oracle')
+  const saved = localStorage.getItem('fd-news-source')
+  if (saved === 'oracle') showSource('oracle')
 })()
 
 // ── Trending ──────────────────────────────────────────────────────────────────

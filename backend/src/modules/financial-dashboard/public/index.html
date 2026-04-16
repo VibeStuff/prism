@@ -68,14 +68,17 @@
       <main class="fd-main">
         <section class="fd-card" id="news-panel">
           <div class="fd-card-title" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-            <span id="title-news">Market News</span>
+            <div class="panel-toggle" id="news-source-toggle">
+              <button class="panel-toggle-btn active" data-source="headlines" id="toggle-news-headlines">Market News</button>
+              <button class="panel-toggle-btn" data-source="oracle" id="toggle-news-oracle">Polymarket</button>
+            </div>
             <button class="news-reload-btn" id="news-reload-btn" title="Reload news">↻</button>
             <span class="filter-badge" id="news-filter-badge" style="display:none">
               <span id="news-filter-label"></span>
               <button class="filter-clear-btn" id="news-filter-clear" title="Clear filter">✕</button>
             </span>
           </div>
-          <div class="news-search-row">
+          <div class="news-search-row" id="news-search-row">
             <svg class="news-search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
             </svg>
@@ -86,6 +89,7 @@
           <div id="news-footer" style="display:none;text-align:center;padding-top:12px">
             <button id="news-more-btn" class="btn-load-more">Load more</button>
           </div>
+          <div id="oracle-body" style="display:none"><div class="skeleton" style="height:300px;border-radius:8px"></div></div>
         </section>
       </main>
 
@@ -104,14 +108,8 @@
         </div>
 
         <div class="fd-card" id="movers-panel">
-          <div class="fd-card-header">
-            <div class="panel-toggle" id="movers-oracle-toggle">
-              <button class="panel-toggle-btn active" data-view="movers" id="toggle-movers">Top Movers</button>
-              <button class="panel-toggle-btn" data-view="oracle" id="toggle-oracle">Market News</button>
-            </div>
-          </div>
+          <div class="fd-card-title" id="title-movers">Top Movers</div>
           <div id="movers-body"><div class="skeleton" style="height:120px;border-radius:8px"></div></div>
-          <div id="oracle-body" style="display:none"><div class="skeleton" style="height:120px;border-radius:8px"></div></div>
         </div>
 
         <div class="fd-card" id="trending-panel">

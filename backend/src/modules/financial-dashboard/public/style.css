@@ -672,17 +672,53 @@ body {
 .oracle-item {
   padding: 10px 6px;
   border-bottom: 1px solid var(--border);
-  cursor: pointer;
-  text-decoration: none;
   display: block;
-  transition: background var(--t) var(--ease);
   border-radius: 6px;
   min-width: 0;
   overflow: hidden;
+  transition: background var(--t) var(--ease);
 }
 
 .oracle-item:last-child { border-bottom: none; }
 .oracle-item:hover { background: var(--amber-light); }
+
+.oracle-title-link {
+  display: block;
+  text-decoration: none;
+  cursor: pointer;
+  min-width: 0;
+}
+
+.oracle-market {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 6px;
+  padding: 3px 8px;
+  background: var(--amber-light, #fff4e0);
+  border: 1px solid var(--amber, #f0a500);
+  border-radius: 999px;
+  font-size: 0.65rem;
+  color: var(--text-dark);
+  text-decoration: none;
+  max-width: 100%;
+  overflow: hidden;
+  transition: background var(--t) var(--ease);
+}
+
+.oracle-market:hover {
+  background: var(--amber, #f0a500);
+  color: #fff;
+}
+
+.oracle-market-icon { font-size: 0.7rem; flex-shrink: 0; }
+
+.oracle-market-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 500;
+}
 
 .oracle-title {
   font-size: 0.8rem;

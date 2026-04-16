@@ -284,6 +284,8 @@ interface OracleItem {
     link: string
     excerpt: string
     pubDate: string
+    marketUrl?: string
+    marketTitle?: string
 }
 
 interface OracleTranslation {
@@ -905,16 +907,23 @@ const FinancialDashboardModule: AppModule = {
             }
         })
 
-        // ── Market News (Breaking financial headlines) ────────────────────────
-        const MARKET_NEWS_FEEDS: Record<string, { url: string; defaultSource: string }> = {
-            en: {
-                url: 'https://news.google.com/rss/search?q=stock+market+OR+wall+street+OR+fed+OR+earnings+when:1d&hl=en-US&gl=US&ceid=US:en',
-                defaultSource: 'Google News',
-            },
-            zh: {
-                url: 'https://news.google.com/rss/search?q=stock+market+OR+wall+street+OR+fed+OR+earnings+when:1d&hl=zh-TW&gl=TW&ceid=TW:zh-Hant',
-                defaultSource: 'Google 新聞',
-            },
+        // ── Market News (Polymarket Oracle — breaking news w/ prediction markets) ─
+        // Turn a polymarket.com/event/slug-name URL into a readable title
+        const slugToTitle = (url: string): string => {
+            const m = url.match(/polymarket\.com\/(?:event|market)\/([^?#/]+)/)
+            if (!m) return ''
+            return m[1]
+                .split('-')
+                .map(w => w.length <= 3 ? w.toUpperCase() : w.charAt(0).toUpperCase() + w.slice(1))
+                .join(' ')
+        }
+
+        // Extract the first prediction-market link from HTML content
+        const extractMarketLink = (html: string): { marketUrl: string; marketTitle: string } | null => {
+            const match = html.match(/https?:\/\/(?:www\.)?polymarket\.com\/(?:event|market)\/[a-zA-Z0-9-]+/)
+            if (!match) return null
+            const marketUrl = match[0]
+            return { marketUrl, marketTitle: slugToTitle(marketUrl) }
         }
 
         server.get(`${prefix}/api/oracle`, { config: { public: true } } as never, async (_req, reply) => {
@@ -924,53 +933,57 @@ const FinancialDashboardModule: AppModule = {
             const cached = cacheGet<OracleItem[]>(cacheKey)
             if (cached) return cached
 
-            const feed = MARKET_NEWS_FEEDS[lang] ?? MARKET_NEWS_FEEDS.en
+            // Always fetch the English feed first (shared across locales)
+            let items = cacheGet<OracleItem[]>('oracle:en')
+            if (!items) {
+                try {
+                    const res = await fetch('https://news.polymarket.com/feed', {
+                        headers: { 'User-Agent': 'Mozilla/5.0 (compatible; Prism/1.0)' },
+                        signal: AbortSignal.timeout(8000),
+                    })
+                    if (!res.ok) throw new Error(`Polymarket feed returned ${res.status}`)
 
-            try {
-                const res = await fetch(feed.url, {
-                    headers: { 'User-Agent': 'Mozilla/5.0 (compatible; Prism/1.0)' },
-                    signal: AbortSignal.timeout(8000),
-                })
-                if (!res.ok) throw new Error(`Market news feed returned ${res.status}`)
-
-                const xml = await res.text()
-                const parser = new XMLParser({ ignoreAttributes: false })
-                const parsed = parser.parse(xml) as {
-                    rss?: {
-                        channel?: {
-                            item?: Array<{
-                                title?: string
-                                link?: string
-                                description?: string
-                                pubDate?: string
-                                source?: string | { '#text'?: string }
-                            }>
+                    const xml = await res.text()
+                    const parser = new XMLParser({ ignoreAttributes: false })
+                    const parsed = parser.parse(xml) as {
+                        rss?: {
+                            channel?: {
+                                item?: Array<{
+                                    title?: string
+                                    link?: string
+                                    description?: string
+                                    pubDate?: string
+                                    'content:encoded'?: string
+                                }>
+                            }
                         }
                     }
+
+                    items = (parsed?.rss?.channel?.item ?? []).slice(0, 8).map(item => {
+                        const encoded = String(item['content:encoded'] ?? '')
+                        const market = extractMarketLink(encoded)
+                        return {
+                            title: String(item.title ?? ''),
+                            link: String(item.link ?? ''),
+                            excerpt: String(item.description ?? '').replace(/<[^>]+>/g, '').replace(/&nbsp;/g, ' ').trim().slice(0, 160),
+                            pubDate: String(item.pubDate ?? ''),
+                            ...(market ? { marketUrl: market.marketUrl, marketTitle: market.marketTitle } : {}),
+                        }
+                    }).sort((a, b) => new Date(b.pubDate).getTime() - new Date(a.pubDate).getTime())
+
+                    cacheSet('oracle:en', items)
+                } catch (err) {
+                    return reply.code(502).send({ error: 'Failed to fetch market news', detail: String(err) })
                 }
-
-                const items = (parsed?.rss?.channel?.item ?? []).slice(0, 8).map(item => {
-                    const rawSource = item.source
-                    const source = typeof rawSource === 'string'
-                        ? rawSource
-                        : (rawSource?.['#text'] ?? feed.defaultSource)
-                    let title = String(item.title ?? '')
-                    if (source && title.endsWith(` - ${source}`)) {
-                        title = title.slice(0, -(` - ${source}`).length)
-                    }
-                    return {
-                        title,
-                        link: String(item.link ?? ''),
-                        excerpt: source,
-                        pubDate: String(item.pubDate ?? ''),
-                    }
-                }).sort((a, b) => new Date(b.pubDate).getTime() - new Date(a.pubDate).getTime())
-
-                cacheSet(cacheKey, items)
-                return items
-            } catch (err) {
-                return reply.code(502).send({ error: 'Failed to fetch market news', detail: String(err) })
             }
+
+            if (lang === 'zh') {
+                const translated = await translateOracleItems(items)
+                cacheSet('oracle:zh', translated)
+                return translated
+            }
+
+            return items
         })
 
         // ── AI Analysis: helper to generate fresh analysis ───────────────────
