@@ -1183,6 +1183,7 @@ body {
   width: 400px;
   max-width: 90vw;
   height: 100vh;
+  height: 100dvh; /* accounts for mobile browser chrome */
   background: var(--cream);
   border-left: 1px solid var(--border);
   box-shadow: -6px 0 32px rgba(60, 30, 0, 0.12);
