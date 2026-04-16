@@ -665,6 +665,8 @@ body {
 .oracle-list {
   display: flex;
   flex-direction: column;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .oracle-item {
@@ -675,6 +677,8 @@ body {
   display: block;
   transition: background var(--t) var(--ease);
   border-radius: 6px;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .oracle-item:last-child { border-bottom: none; }
@@ -689,6 +693,7 @@ body {
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
+  word-break: break-word;
   margin-bottom: 3px;
 }
 
@@ -696,9 +701,10 @@ body {
   font-size: 0.72rem;
   color: var(--text-mid);
   line-height: 1.4;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
   margin-bottom: 3px;
 }
 
