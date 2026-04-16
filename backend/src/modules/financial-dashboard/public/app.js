@@ -1189,7 +1189,7 @@ async function loadAll() {
     document.getElementById('trending-body').innerHTML = `<div class="panel-error">${S.errData}</div>`
   })
 
-  const oracleP = apiFetch('/api/oracle').then(items => {
+  const oracleP = apiFetch(`/api/oracle?lang=${currentLang}`).then(items => {
     renderOracle(items)
   }).catch(() => {
     document.getElementById('oracle-body').innerHTML = `<div class="panel-error">${S.errOracle}</div>`
