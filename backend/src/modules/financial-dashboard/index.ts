@@ -55,6 +55,59 @@ interface CacheEntry {
     ts: number
 }
 
+// ─── Web Search ──────────────────────────────────────────────────────────────
+
+interface SearchResult {
+    title: string
+    url: string
+    snippet: string
+}
+
+async function fetchWebSearch(query: string, maxResults = 5): Promise<SearchResult[]> {
+    const url = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`
+    const res = await fetch(url, {
+        headers: {
+            'User-Agent': 'Mozilla/5.0 (compatible; Prism/1.0)',
+            'Accept': 'text/html',
+        },
+        signal: AbortSignal.timeout(10000),
+    })
+    if (!res.ok) throw new Error(`Search returned ${res.status}`)
+    const html = await res.text()
+
+    const results: SearchResult[] = []
+    // Parse DuckDuckGo HTML results
+    const resultBlocks = html.split('class="result__body"')
+    for (let i = 1; i < resultBlocks.length && results.length < maxResults; i++) {
+        const block = resultBlocks[i]
+
+        // Extract title
+        const titleMatch = block.match(/class="result__a"[^>]*>([^<]+)</)
+        const title = titleMatch?.[1]?.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&#x27;/g, "'").replace(/&quot;/g, '"').trim() ?? ''
+
+        // Extract URL
+        const urlMatch = block.match(/href="([^"]*)"/)
+        let href = urlMatch?.[1] ?? ''
+        // DuckDuckGo wraps URLs in a redirect — extract the actual URL
+        const uddgMatch = href.match(/uddg=([^&]+)/)
+        if (uddgMatch) href = decodeURIComponent(uddgMatch[1])
+
+        // Extract snippet
+        const snippetMatch = block.match(/class="result__snippet"[^>]*>([\s\S]*?)<\/a>/)
+        const snippet = snippetMatch?.[1]
+            ?.replace(/<\/?b>/g, '')
+            .replace(/<[^>]+>/g, '')
+            .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&#x27;/g, "'").replace(/&quot;/g, '"')
+            .trim() ?? ''
+
+        if (title && href) {
+            results.push({ title, url: href, snippet })
+        }
+    }
+
+    return results
+}
+
 // ─── In-Memory Cache (60s TTL) ────────────────────────────────────────────────
 
 const cache = new Map<string, CacheEntry>()
@@ -291,6 +344,20 @@ const CHAT_TOOLS = [
             properties: {},
         },
     },
+    {
+        name: 'web_search',
+        description: 'Search the web for current information about stocks, companies, market events, economic data, earnings reports, or any financial topic. Use this when the user asks about recent events, specific company news, or anything not covered by the live market data already provided.',
+        input_schema: {
+            type: 'object',
+            properties: {
+                query: {
+                    type: 'string',
+                    description: 'The search query — be specific and include relevant financial terms',
+                },
+            },
+            required: ['query'],
+        },
+    },
 ]
 
 async function executeTool(
@@ -332,6 +399,20 @@ async function executeTool(
     if (name === 'clear_news_filter') {
         actions.push({ type: 'news_filter_clear' })
         return 'News filter cleared — showing all headlines'
+    }
+
+    if (name === 'web_search') {
+        const query = String(input.query ?? '').trim()
+        if (!query) return 'Error: search query is required'
+        try {
+            const results = await fetchWebSearch(query, 5)
+            if (!results.length) return `No search results found for "${query}"`
+            return results.map((r, i) =>
+                `[${i + 1}] ${r.title}\n    ${r.url}\n    ${r.snippet}`
+            ).join('\n\n')
+        } catch (err) {
+            return `Search failed: ${String(err)}`
+        }
     }
 
     return `Unknown tool: ${name}`
@@ -621,6 +702,18 @@ const FinancialDashboardModule: AppModule = {
 
             const snapshot = (() => { try { return buildMarketSnapshot() } catch { return '(market snapshot unavailable)' } })()
 
+            // Fetch web search context for richer analysis
+            let searchContext = ''
+            try {
+                const searchResults = await fetchWebSearch('stock market today financial news', 5)
+                if (searchResults.length) {
+                    searchContext = '\n\n=== RECENT WEB HEADLINES ===\n' +
+                        searchResults.map(r => `• ${r.title}: ${r.snippet}`).join('\n')
+                }
+            } catch {
+                // non-fatal — proceed without search context
+            }
+
             const response = await fetch('https://api.anthropic.com/v1/messages', {
                 method: 'POST',
                 headers: {
@@ -631,11 +724,11 @@ const FinancialDashboardModule: AppModule = {
                 body: JSON.stringify({
                     model: process.env.FINANCIAL_DASHBOARD_MODEL ?? 'claude-sonnet-4-6',
                     max_tokens: 600,
-                    system: `You are a concise Wall Street market analyst writing for a professional financial dashboard. Write in tight, punchy prose — no bullet points, no headers, no markdown formatting. 3-4 short paragraphs max. Cover: overall market sentiment, notable sector moves, top movers context, and one key risk or theme to watch. Be specific with numbers from the data provided. Never say "as of my knowledge cutoff" — you are analyzing live data being handed to you.${lang === 'zh' ? ' Write entirely in Traditional Chinese (繁體中文). Use professional Traditional Chinese financial terminology.' : ''}`,
+                    system: `You are a concise Wall Street market analyst writing for a professional financial dashboard. Write in tight, punchy prose — no bullet points, no headers, no markdown formatting. 3-4 short paragraphs max. Cover: overall market sentiment, notable sector moves, top movers context, and one key risk or theme to watch. Be specific with numbers from the data provided. If recent web headlines are provided, incorporate relevant context about market-moving events into your analysis. Never say "as of my knowledge cutoff" — you are analyzing live data being handed to you.${lang === 'zh' ? ' Write entirely in Traditional Chinese (繁體中文). Use professional Traditional Chinese financial terminology.' : ''}`,
                     messages: [
                         {
                             role: 'user',
-                            content: `Here is today's live market data. Write your analysis now.\n\n${snapshot}`,
+                            content: `Here is today's live market data. Write your analysis now.\n\n${snapshot}${searchContext}`,
                         },
                     ],
                 }),
@@ -694,14 +787,14 @@ const FinancialDashboardModule: AppModule = {
                 const snapshot = (() => { try { return buildMarketSnapshot() } catch { return '(market snapshot unavailable)' } })()
                 const watchlist = readWatchlist()
 
-                const systemPrompt = `You are a helpful financial dashboard assistant with access to tools to manage the user's experience. You can add or remove stocks from their watchlist and filter the news feed to focus on topics they care about.
+                const systemPrompt = `You are a helpful financial dashboard assistant with access to tools to manage the user's experience. You can add or remove stocks from their watchlist, filter the news feed, and search the web for current financial information.
 
 Current watchlist: ${watchlist.join(', ') || '(empty)'}
 
 Market context:
 ${snapshot}
 
-Keep responses concise — 1-3 sentences confirming what you did and any relevant insight. If asked to track or add a stock, use add_to_watchlist. If asked about news on a topic, use filter_news. If asked to show all news, use clear_news_filter.`
+Keep responses concise — 1-3 sentences confirming what you did and any relevant insight. If asked to track or add a stock, use add_to_watchlist. If asked about news on a topic, use filter_news. If asked to show all news, use clear_news_filter. If the user asks about recent events, specific companies, earnings, economic data, or anything not in the market snapshot above, use web_search to find current information and incorporate it into your answer.`
 
                 const messages: AnthropicMessage[] = [
                     { role: 'user', content: userMessage },
