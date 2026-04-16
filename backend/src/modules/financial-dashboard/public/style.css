@@ -994,6 +994,49 @@ body {
   gap: 14px;
 }
 
+.range-toggle {
+  display: inline-flex;
+  align-items: center;
+  background: rgba(180, 145, 60, 0.08);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 2px;
+  gap: 1px;
+}
+
+.range-btn {
+  padding: 4px 8px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  font-family: 'Inter', sans-serif;
+  font-size: 0.68rem;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: background var(--t) var(--ease), color var(--t) var(--ease), box-shadow var(--t) var(--ease);
+  white-space: nowrap;
+  line-height: 1.4;
+  outline: none;
+}
+
+.range-btn.active {
+  background: var(--cream);
+  color: var(--amber);
+  box-shadow: 0 1px 4px rgba(60, 30, 0, 0.10);
+  font-weight: 600;
+}
+
+.range-btn:hover:not(.active) {
+  color: var(--text-mid);
+  background: rgba(255, 252, 240, 0.5);
+}
+
+.range-btn:focus-visible {
+  box-shadow: 0 0 0 2px var(--amber-glow);
+}
+
 .lang-toggle {
   display: inline-flex;
   align-items: center;

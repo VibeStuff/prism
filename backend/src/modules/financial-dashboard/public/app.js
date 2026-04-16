@@ -116,6 +116,8 @@ const STRINGS = {
 let currentLang = localStorage.getItem('fd-lang') ?? 'en'
 let S = STRINGS[currentLang]
 
+let currentRange = localStorage.getItem('fd-range') ?? '1d'
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function esc(s) {
@@ -447,7 +449,7 @@ async function renderWatchlist(symbols) {
   body.querySelectorAll('.ticker-remove').forEach(btn => attachRemoveHandler(btn))
 
   try {
-    const quotes = await apiFetch(`/api/quotes?symbols=${encodeURIComponent(symbols.join(','))}`)
+    const quotes = await apiFetch(`/api/quotes?symbols=${encodeURIComponent(symbols.join(','))}&range=${currentRange}`)
     quotes.forEach(q => {
       const row = body.querySelector(`.ticker-row[data-sym="${q.symbol}"]`)
       if (!row) return
@@ -533,7 +535,7 @@ async function appendWatchlistTicker(sym) {
 
   // Fetch quote for just this symbol
   try {
-    const quotes = await apiFetch(`/api/quotes?symbols=${encodeURIComponent(sym)}`)
+    const quotes = await apiFetch(`/api/quotes?symbols=${encodeURIComponent(sym)}&range=${currentRange}`)
     const q = quotes[0]
     if (!q || q.error) return
 
@@ -725,7 +727,7 @@ async function renderAssets() {
   body.innerHTML = `<div class="skeleton" style="height:80px;border-radius:8px"></div>`
 
   try {
-    const quotes = await apiFetch(`/api/quotes?symbols=${assets.map(a => a.sym).join(',')}`)
+    const quotes = await apiFetch(`/api/quotes?symbols=${assets.map(a => a.sym).join(',')}&range=${currentRange}`)
     const map    = Object.fromEntries(quotes.map(q => [q.symbol ?? '', q]))
 
     body.innerHTML = assets.map(a => {
@@ -949,16 +951,15 @@ async function sendChat() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ message }),
     })
-    if (!res.ok) {
-      const e = await res.json().catch(() => ({}))
-      throw new Error(e.error ?? `HTTP ${res.status}`)
-    }
-    const data = await res.json()
+    const data = await res.json().catch(() => ({}))
 
     removeTypingIndicator()
 
     const actionBadges = []
 
+    // Process actions regardless of HTTP status — tools may have
+    // already executed (e.g. stock added to disk) even when the
+    // follow-up LLM call fails with 502.
     for (const action of (data.actions ?? [])) {
       if (action.type === 'watchlist_add') {
         appendWatchlistTicker(action.symbol)
@@ -990,6 +991,10 @@ async function sendChat() {
         renderNews()
         actionBadges.push(`<span class="action-badge clear">Filter cleared</span>`)
       }
+    }
+
+    if (!res.ok) {
+      throw new Error(data.error ?? `HTTP ${res.status}`)
     }
 
     // Push assistant message
@@ -1097,7 +1102,7 @@ async function loadAll() {
   // Fire all requests in parallel but render each section as soon as it arrives
   // This gives a progressive loading feel instead of a blank page until everything completes
 
-  const indicesP = apiFetch('/api/indices').then(indices => {
+  const indicesP = apiFetch(`/api/indices?range=${currentRange}`).then(indices => {
     lastIndices = indices
     renderIndexBar(indices)
     renderSummary(indices)
@@ -1113,7 +1118,7 @@ async function loadAll() {
     document.getElementById('index-bar').innerHTML = `<div class="panel-error">${S.errIndex}</div>`
   })
 
-  const sectorsP = apiFetch('/api/sectors').then(sectors => {
+  const sectorsP = apiFetch(`/api/sectors?range=${currentRange}`).then(sectors => {
     renderSectors(sectors)
   }).catch(() => {
     document.getElementById('sectors-body').innerHTML = `<div class="panel-error">${S.errData}</div>`
@@ -1132,7 +1137,7 @@ async function loadAll() {
     document.getElementById('news-body').innerHTML = `<div class="panel-error">${S.errNews}</div>`
   })
 
-  const moversP = apiFetch('/api/movers').then(movers => {
+  const moversP = apiFetch(`/api/movers?range=${currentRange}`).then(movers => {
     lastMovers = movers
     renderMovers(movers)
     renderTrending(movers)
@@ -1162,6 +1167,26 @@ document.querySelectorAll('.lang-btn').forEach(btn => {
     localStorage.setItem('fd-lang', lang)
     applyI18n()
   })
+})
+
+// ── Range Toggle ─────────────────────────────────────────────────────────────
+
+document.querySelectorAll('.range-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const range = btn.dataset.range
+    if (range === currentRange) return
+    currentRange = range
+    localStorage.setItem('fd-range', range)
+    document.querySelectorAll('.range-btn').forEach(b => {
+      b.classList.toggle('active', b.dataset.range === currentRange)
+    })
+    loadAll()
+  })
+})
+
+// Apply saved range active state on load
+document.querySelectorAll('.range-btn').forEach(btn => {
+  btn.classList.toggle('active', btn.dataset.range === currentRange)
 })
 
 // ── News Search ──────────────────────────────────────────────────────────────

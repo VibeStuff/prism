@@ -221,8 +221,17 @@ const YF_HEADERS = {
     'Accept': 'application/json',
 }
 
-async function fetchYahooQuote(symbol: string): Promise<QuoteData> {
-    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?interval=1d&range=5d`
+const VALID_RANGES = ['1d', '5d', '1mo', '6mo', 'ytd'] as const
+type YahooRange = typeof VALID_RANGES[number]
+
+function sanitizeRange(raw?: string): YahooRange {
+    if (raw && (VALID_RANGES as readonly string[]).includes(raw)) return raw as YahooRange
+    return '1d'
+}
+
+async function fetchYahooQuote(symbol: string, range: YahooRange = '1d'): Promise<QuoteData> {
+    const interval = range === '1d' ? '5m' : range === '5d' ? '1d' : '1d'
+    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?interval=${interval}&range=${range}`
     const res = await fetch(url, {
         headers: YF_HEADERS,
         signal: AbortSignal.timeout(8000),
@@ -525,19 +534,20 @@ const FinancialDashboardModule: AppModule = {
         )
 
         // ── Quote: Single ───────────────────────────────────────────────────
-        server.get<{ Querystring: { symbol?: string } }>(
+        server.get<{ Querystring: { symbol?: string; range?: string } }>(
             `${prefix}/api/quote`,
             { config: { public: true } } as never,
             async (req, reply) => {
                 const symbol = (req.query.symbol ?? '').toUpperCase().trim()
                 if (!symbol) return reply.code(400).send({ error: 'symbol query param required' })
+                const range = sanitizeRange(req.query.range)
 
-                const cacheKey = `quote:${symbol}`
+                const cacheKey = `quote:${symbol}:${range}`
                 const cached = cacheGet<QuoteData>(cacheKey)
                 if (cached) return cached
 
                 try {
-                    const data = await fetchYahooQuote(symbol)
+                    const data = await fetchYahooQuote(symbol, range)
                     cacheSet(cacheKey, data)
                     return data
                 } catch (err) {
@@ -547,20 +557,21 @@ const FinancialDashboardModule: AppModule = {
         )
 
         // ── Quotes: Batch ───────────────────────────────────────────────────
-        server.get<{ Querystring: { symbols?: string } }>(
+        server.get<{ Querystring: { symbols?: string; range?: string } }>(
             `${prefix}/api/quotes`,
             { config: { public: true } } as never,
             async (req, reply) => {
                 const raw = req.query.symbols ?? ''
                 const symbols = raw.split(',').map(s => s.trim().toUpperCase()).filter(Boolean)
                 if (!symbols.length) return reply.code(400).send({ error: 'symbols query param required' })
+                const range = sanitizeRange(req.query.range)
 
                 const results = await Promise.allSettled(
                     symbols.map(async (sym) => {
-                        const cacheKey = `quote:${sym}`
+                        const cacheKey = `quote:${sym}:${range}`
                         const cached = cacheGet<QuoteData>(cacheKey)
                         if (cached) return cached
-                        const data = await fetchYahooQuote(sym)
+                        const data = await fetchYahooQuote(sym, range)
                         cacheSet(cacheKey, data)
                         return data
                     }),
@@ -573,17 +584,19 @@ const FinancialDashboardModule: AppModule = {
         )
 
         // ── Indices ─────────────────────────────────────────────────────────
-        server.get(`${prefix}/api/indices`, { config: { public: true } } as never, async (_req, reply) => {
-            const cached = cacheGet<QuoteData[]>('indices')
+        server.get<{ Querystring: { range?: string } }>(`${prefix}/api/indices`, { config: { public: true } } as never, async (_req, reply) => {
+            const range = sanitizeRange((_req as any).query?.range)
+            const cacheKey = `indices:${range}`
+            const cached = cacheGet<QuoteData[]>(cacheKey)
             if (cached) return cached
 
             try {
-                const results = await Promise.allSettled(INDEX_SYMBOLS.map(fetchYahooQuote))
+                const results = await Promise.allSettled(INDEX_SYMBOLS.map(s => fetchYahooQuote(s, range)))
                 const data = results
                     .map((r, i) => r.status === 'fulfilled' ? r.value : null)
                     .filter((q): q is QuoteData => q !== null)
 
-                if (data.length) cacheSet('indices', data)
+                if (data.length) { cacheSet(cacheKey, data); cacheSet('indices', data) }
                 return data
             } catch (err) {
                 return reply.code(502).send({ error: 'Failed to fetch indices', detail: String(err) })
@@ -591,13 +604,15 @@ const FinancialDashboardModule: AppModule = {
         })
 
         // ── Sectors ─────────────────────────────────────────────────────────
-        server.get(`${prefix}/api/sectors`, { config: { public: true } } as never, async (_req, reply) => {
-            const cached = cacheGet<QuoteData[]>('sectors')
+        server.get<{ Querystring: { range?: string } }>(`${prefix}/api/sectors`, { config: { public: true } } as never, async (_req, reply) => {
+            const range = sanitizeRange((_req as any).query?.range)
+            const cacheKey = `sectors:${range}`
+            const cached = cacheGet<QuoteData[]>(cacheKey)
             if (cached) return cached
 
             try {
                 const etfs = Object.keys(SECTOR_ETFS)
-                const results = await Promise.allSettled(etfs.map(fetchYahooQuote))
+                const results = await Promise.allSettled(etfs.map(s => fetchYahooQuote(s, range)))
                 const data = results
                     .map((r, i) => {
                         if (r.status === 'fulfilled') {
@@ -608,7 +623,7 @@ const FinancialDashboardModule: AppModule = {
                     .filter((q): q is QuoteData => q !== null)
                     .sort((a, b) => b.changePercent - a.changePercent)
 
-                if (data.length) cacheSet('sectors', data)
+                if (data.length) { cacheSet(cacheKey, data); cacheSet('sectors', data) }
                 return data
             } catch (err) {
                 return reply.code(502).send({ error: 'Failed to fetch sectors', detail: String(err) })
@@ -686,17 +701,19 @@ const FinancialDashboardModule: AppModule = {
         })
 
         // ── Movers ───────────────────────────────────────────────────────────
-        server.get(`${prefix}/api/movers`, { config: { public: true } } as never, async (_req, reply) => {
-            const cached = cacheGet<{ gainers: QuoteData[]; losers: QuoteData[] }>('movers')
+        server.get<{ Querystring: { range?: string } }>(`${prefix}/api/movers`, { config: { public: true } } as never, async (_req, reply) => {
+            const range = sanitizeRange((_req as any).query?.range)
+            const moversCacheKey = `movers:${range}`
+            const cached = cacheGet<{ gainers: QuoteData[]; losers: QuoteData[] }>(moversCacheKey)
             if (cached) return cached
 
             try {
                 const results = await Promise.allSettled(
                     MOVERS_SYMBOLS.map(sym => {
-                        const cacheKey = `quote:${sym}`
+                        const cacheKey = `quote:${sym}:${range}`
                         const cachedQuote = cacheGet<QuoteData>(cacheKey)
                         if (cachedQuote) return Promise.resolve(cachedQuote)
-                        return fetchYahooQuote(sym).then(q => { cacheSet(cacheKey, q); return q })
+                        return fetchYahooQuote(sym, range).then(q => { cacheSet(cacheKey, q); return q })
                     }),
                 )
 
@@ -713,6 +730,7 @@ const FinancialDashboardModule: AppModule = {
                 const losers = quotes.filter(q => q.changePercent < 0).slice(0, 5)
 
                 const data = { gainers, losers }
+                cacheSet(moversCacheKey, data)
                 cacheSet('movers', data)
                 return data
             } catch (err) {
@@ -928,7 +946,7 @@ Keep responses concise — 1-3 sentences confirming what you did and any relevan
                     if (!res.ok) {
                         const err = await res.json().catch(() => ({}))
                         aiLog('ERROR', 'chat', `API error ${res.status} on iteration ${i + 1}`, err)
-                        return reply.code(502).send({ error: 'Anthropic API error', detail: err })
+                        return reply.code(502).send({ error: 'Anthropic API error', detail: err, actions, response: responseText || null })
                     }
 
                     const data = await res.json() as {
