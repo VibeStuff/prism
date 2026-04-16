@@ -461,10 +461,13 @@ const FinancialDashboardModule: AppModule = {
     async register(server: FastifyInstance, _services: CoreServices, prefix: string): Promise<void> {
         const publicDir = path.join(process.cwd(), 'src', 'modules', 'financial-dashboard', 'public')
         const assetPrefix = `${prefix}-assets`
+        const cacheBust = `v=${Date.now()}`
 
         // ── Page ────────────────────────────────────────────────────────────
         server.get(prefix, { config: { public: true } } as never, async (_req, reply) => {
             const html = fs.readFileSync(path.join(publicDir, 'index.html'), 'utf-8')
+                .replaceAll('{{ASSETS}}/style.css', `${assetPrefix}/style.css?${cacheBust}`)
+                .replaceAll('{{ASSETS}}/app.js', `${assetPrefix}/app.js?${cacheBust}`)
                 .replaceAll('{{ASSETS}}', assetPrefix)
             reply.type('text/html').send(html)
         })
