@@ -83,12 +83,28 @@ async function fetchWebSearch(query: string, maxResults = 5): Promise<SearchResu
 
     const res = await fetch(url, {
         headers: { Accept: 'application/json' },
+        redirect: 'manual',
         signal: AbortSignal.timeout(10000),
     })
 
     console.error(`[AI:search] SearXNG responded ${res.status} in ${Date.now() - t0}ms`)
 
+    // Handle redirects — SearXNG may redirect to a preferences page
+    if (res.status >= 300 && res.status < 400) {
+        const location = res.headers.get('location')
+        console.error(`[AI:search] Redirected to: ${location} — SearXNG may need configuration`)
+        throw new Error('SearXNG redirected (check instance configuration)')
+    }
+
     if (!res.ok) throw new Error(`SearXNG returned ${res.status}`)
+
+    // Verify we got JSON, not an HTML page
+    const contentType = res.headers.get('content-type') ?? ''
+    if (!contentType.includes('json')) {
+        const body = (await res.text()).slice(0, 100)
+        console.error(`[AI:search] Expected JSON but got ${contentType}: ${body}`)
+        throw new Error(`SearXNG returned HTML instead of JSON — add format=json to your instance settings or check SEARXNG_URL`)
+    }
 
     const data = await res.json() as { results?: Array<{ title?: string; url?: string; content?: string }> }
     const results: SearchResult[] = []
