@@ -311,8 +311,10 @@ let lastRefresh = null
 let newsData    = []
 let newsShown   = 10
 let newsFilter  = null   // { keywords: string[], label: string } | null
-let lastIndices = null
-let lastMovers  = null
+let lastIndices  = null
+let lastMovers   = null
+let lastSectors  = null
+let lastWatchlist = null
 let chatLog     = []     // { role: 'user'|'assistant', text: string, time: string, actions?: [] }
 
 // ── i18n Application ──────────────────────────────────────────────────────────
@@ -463,6 +465,7 @@ async function renderWatchlist(symbols) {
 
   try {
     const quotes = await apiFetch(`/api/quotes?symbols=${encodeURIComponent(symbols.join(','))}&range=${currentRange}`)
+    lastWatchlist = quotes
     quotes.forEach(q => {
       const row = body.querySelector(`.ticker-row[data-sym="${q.symbol}"]`)
       if (!row) return
@@ -1147,12 +1150,13 @@ function renderTickerTape(quotes) {
     </span>`
   }).join('<span class="ticker-tape-dot">&#x2022;</span>')
 
-  // Duplicate content so the scroll loops seamlessly
-  track.innerHTML = items + '<span class="ticker-tape-dot">&#x2022;</span>' + items
+  // Triple the content so the scroll loops seamlessly even when item count is low
+  const dot = '<span class="ticker-tape-dot">&#x2022;</span>'
+  track.innerHTML = items + dot + items + dot + items
 
   // Adjust speed based on content width — ~50px per second
-  const contentWidth = track.scrollWidth / 2
-  const duration = Math.max(20, contentWidth / 50)
+  const contentWidth = track.scrollWidth / 3
+  const duration = Math.max(30, contentWidth / 50)
   track.style.setProperty('--ticker-duration', `${duration}s`)
   document.getElementById('ticker-tape').style.setProperty('--ticker-duration', `${duration}s`)
 }
@@ -1170,11 +1174,15 @@ function updateTickerTape() {
 
   // Indices first
   if (lastIndices) lastIndices.forEach(add)
+  // Sectors
+  if (lastSectors) lastSectors.forEach(add)
   // Movers
   if (lastMovers) {
     ;(lastMovers.gainers ?? []).forEach(add)
     ;(lastMovers.losers ?? []).forEach(add)
   }
+  // Watchlist
+  if (lastWatchlist) lastWatchlist.forEach(add)
 
   if (tapeQuotes.length) renderTickerTape(tapeQuotes)
 }
@@ -1199,6 +1207,7 @@ async function loadAll() {
   })
 
   const sectorsP = apiFetch(`/api/sectors?range=${currentRange}`).then(sectors => {
+    lastSectors = sectors
     renderSectors(sectors)
   }).catch(() => {
     document.getElementById('sectors-body').innerHTML = `<div class="panel-error">${S.errData}</div>`
