@@ -141,6 +141,32 @@ const data = await fetch(API + '/api/data').then(r => r.json())
 
 ## What's Included
 
+### Financial Dashboard
+
+A real-time market intelligence dashboard powered by AI:
+
+| Feature | Description |
+|:--|:--|
+| **Live Market Data** | S&P 500, Dow, Nasdaq, Russell 2000, VIX with sparkline charts |
+| **Watchlist** | Track any ticker — add/remove with live price updates |
+| **Sector Performance** | All 11 GICS sectors ranked by daily change |
+| **Market News** | Google News Business RSS, sorted newest-first, with search filtering |
+| **Top Movers** | Daily gainers and losers across major stocks |
+| **AI Analysis** | Claude-powered market analysis with markdown formatting, collapsible drawer |
+| **AI Chat** | Conversational assistant with memory — manages watchlist, filters news, searches the web |
+| **Bilingual** | Full English and Traditional Chinese support |
+
+### AI Dashboard
+
+A programmable widget dashboard controlled via REST API or LLM agents:
+
+| Feature | Description |
+|:--|:--|
+| **11 Widget Types** | stat, list, markdown, html, chart, progress, table, image, countdown, kv, embed |
+| **News Feed** | Pinnable, categorized announcements with markdown support |
+| **Multi-Tab** | Organize widgets across named tabs |
+| **Push API** | Bulk-update widgets, news, and metadata in one atomic call |
+
 ### Built-in Dashboard
 
 The default landing page — a personal home screen with:
@@ -227,14 +253,14 @@ await services.timer.after('sync-trigger', 5000, {
                     │      (Port 3000)      │
                     └──────────┬───────────┘
                                │
-               ┌───────────────┼───────────────┐
-               │               │               │
-      ┌────────▼──────┐ ┌─────▼─────┐ ┌───────▼───────┐
-      │   Dashboard   │ │   Time    │ │ Notifications │
-      │    Module     │ │  Module   │ │    Module     │
-      └────────┬──────┘ └─────┬─────┘ └───────┬───────┘
-               │               │               │
-               └───────────────┼───────────────┘
+       ┌────────────┬────────────┬────────────┬────────────┐
+       │            │            │            │            │
+  ┌────▼─────┐ ┌───▼────┐ ┌────▼─────┐ ┌───▼───┐ ┌─────▼──────┐
+  │Financial │ │   AI   │ │Dashboard │ │ Time  │ │Notifications│
+  │Dashboard │ │Dashboard│ │  Module  │ │Module │ │   Module    │
+  └────┬─────┘ └───┬────┘ └────┬─────┘ └───┬───┘ └─────┬──────┘
+       │            │           │            │           │
+       └────────────┴───────────┴────────────┴───────────┘
                                │
                     ┌──────────▼───────────┐
                     │    Core Services     │
@@ -274,6 +300,10 @@ await services.timer.after('sync-trigger', 5000, {
 | `REDIS_HOST` | `redis` | Redis hostname |
 | `JWT_SECRET` | *(change this)* | JWT signing secret |
 | `JWT_EXPIRES_IN` | `15m` | Access token lifetime |
+| `ANTHROPIC_API_KEY` | *(empty)* | API key for Claude-powered AI analysis and chat |
+| `FINANCIAL_DASHBOARD_MODEL` | `claude-sonnet-4-6` | Claude model for financial AI features |
+| `SEARXNG_URL` | *(empty)* | SearXNG instance URL for web search (e.g. `http://localhost:8888`) |
+| `AI_DASHBOARD_TOKEN` | *(change this)* | Auth token for AI Dashboard push API |
 
 To change the landing page:
 
@@ -315,6 +345,8 @@ prism/
 │   │   │   ├── plugin-loader.ts       # Auto-discovers modules
 │   │   │   └── services/              # db, time, notify, timer, scheduler, events
 │   │   ├── modules/
+│   │   │   ├── financial-dashboard/   # Real-time market data + AI analysis
+│   │   │   ├── ai-dashboard/          # Programmable widget dashboard
 │   │   │   ├── dashboard/             # Built-in personal dashboard
 │   │   │   ├── time/                  # Time + timer API
 │   │   │   └── notifications/         # Notification history + push
