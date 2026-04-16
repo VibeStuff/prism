@@ -1241,10 +1241,10 @@ body {
 
 .analysis-collapsible {
   padding: 0 20px 16px;
-  overflow: hidden;
-  transition: max-height 0.3s var(--ease), padding 0.3s var(--ease), opacity 0.2s;
-  max-height: 500px;
+  overflow-y: auto;
+  max-height: 50vh;
   opacity: 1;
+  transition: max-height 0.3s var(--ease), padding 0.3s var(--ease), opacity 0.2s;
 }
 
 .analysis-collapsible.collapsed {
@@ -1252,6 +1252,7 @@ body {
   padding-top: 0;
   padding-bottom: 0;
   opacity: 0;
+  overflow: hidden;
 }
 
 /* ─── Drawer: Chat Log ─── */
