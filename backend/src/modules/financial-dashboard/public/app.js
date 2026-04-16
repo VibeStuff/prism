@@ -21,7 +21,7 @@ const STRINGS = {
     movers: 'Top Movers',
     gainers: 'Gainers',
     losers: 'Losers',
-    oracle: 'The Oracle',
+    oracle: 'Polymarket',
     trending: 'Trending',
     aiAnalysis: 'AI Analysis',
     chatPlaceholder: 'Ask AI… add TSLA, focus news on Fed…',
