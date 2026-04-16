@@ -214,6 +214,69 @@ function writeAnalysis(lang: string, data: PersistedAnalysis): void {
     }
 }
 
+// ─── Summary persistence ─────────────────────────────────────────────────────
+
+function summaryPath(lang: string): string {
+    const safe = lang === 'zh' ? 'zh' : 'en'
+    return path.join(ANALYSIS_DIR, `summary-${safe}.json`)
+}
+
+function readSummary(lang: string): PersistedAnalysis | null {
+    try {
+        const p = summaryPath(lang)
+        if (!fs.existsSync(p)) return null
+        return JSON.parse(fs.readFileSync(p, 'utf-8')) as PersistedAnalysis
+    } catch {
+        return null
+    }
+}
+
+function writeSummary(lang: string, data: PersistedAnalysis): void {
+    try {
+        fs.writeFileSync(summaryPath(lang), JSON.stringify(data, null, 2), 'utf-8')
+    } catch {
+        // silently fail
+    }
+}
+
+// ─── Market hours staleness check ────────────────────────────────────────────
+
+function isSummaryStale(generatedAt: string | null): boolean {
+    if (!generatedAt) return true
+
+    const genTime = new Date(generatedAt).getTime()
+    if (isNaN(genTime)) return true
+
+    // Current time in US Eastern
+    const now = new Date()
+    const etStr = now.toLocaleString('en-US', { timeZone: 'America/New_York' })
+    const et = new Date(etStr)
+
+    // Build today's market open (9:30 ET) and close (16:00 ET)
+    const todayOpen = new Date(et)
+    todayOpen.setHours(9, 30, 0, 0)
+    const todayClose = new Date(et)
+    todayClose.setHours(16, 0, 0, 0)
+
+    // Convert ET boundaries back to UTC for comparison with genTime (ISO string)
+    const etOffsetMs = now.getTime() - et.getTime()
+    const todayOpenUtc = todayOpen.getTime() + etOffsetMs
+    const todayCloseUtc = todayClose.getTime() + etOffsetMs
+
+    // Yesterday's boundaries
+    const yesterdayOpenUtc = todayOpenUtc - 86400000
+    const yesterdayCloseUtc = todayCloseUtc - 86400000
+
+    // Find the most recent boundary that has already passed
+    const boundaries = [todayCloseUtc, todayOpenUtc, yesterdayCloseUtc, yesterdayOpenUtc]
+        .filter(b => b <= now.getTime())
+
+    if (!boundaries.length) return false // no boundary has passed yet (unlikely)
+
+    const lastBoundary = Math.max(...boundaries)
+    return genTime < lastBoundary
+}
+
 // ─── Oracle translation cache ────────────────────────────────────────────────
 
 interface OracleItem {
@@ -1040,6 +1103,136 @@ const FinancialDashboardModule: AppModule = {
                 } catch (err: unknown) {
                     const e = err as { statusCode?: number; message?: string; detail?: unknown }
                     return reply.code(e.statusCode ?? 502).send({ error: e.message ?? 'Failed to generate analysis', detail: e.detail })
+                }
+            },
+        )
+
+        // ── Market Summary: helper to generate fresh summary ─────────────────
+        async function generateSummary(lang: string): Promise<PersistedAnalysis> {
+            const t0 = Date.now()
+            aiLog('INFO', 'summary', `Starting summary generation (lang=${lang})`)
+
+            const apiKey = process.env.ANTHROPIC_API_KEY
+            if (!apiKey) {
+                aiLog('ERROR', 'summary', 'ANTHROPIC_API_KEY not configured')
+                throw Object.assign(new Error('ANTHROPIC_API_KEY not configured'), { statusCode: 503 })
+            }
+
+            // Warm the market data cache if cold
+            const needsIndices = !cacheGet('indices')
+            const needsSectors = !cacheGet('sectors')
+            const needsMovers = !cacheGet('movers')
+
+            if (needsIndices || needsSectors || needsMovers) {
+                const cacheT0 = Date.now()
+                await Promise.allSettled([
+                    needsIndices
+                        ? Promise.allSettled(INDEX_SYMBOLS.map(s => fetchYahooQuote(s))).then(results => {
+                            const data = results.map(r => r.status === 'fulfilled' ? r.value : null).filter((q): q is QuoteData => q !== null)
+                            cacheSet('indices', data)
+                        })
+                        : Promise.resolve(),
+                    needsSectors
+                        ? Promise.allSettled(Object.keys(SECTOR_ETFS).map(s => fetchYahooQuote(s))).then(results => {
+                            const etfs = Object.keys(SECTOR_ETFS)
+                            const data = results
+                                .map((r, i) => r.status === 'fulfilled' ? { ...r.value, longName: SECTOR_ETFS[etfs[i]] ?? r.value.longName } : null)
+                                .filter((q): q is QuoteData => q !== null)
+                                .sort((a, b) => b.changePercent - a.changePercent)
+                            cacheSet('sectors', data)
+                        })
+                        : Promise.resolve(),
+                    needsMovers
+                        ? Promise.allSettled(MOVERS_SYMBOLS.map(s => fetchYahooQuote(s))).then(results => {
+                            const quotes = results
+                                .map(r => r.status === 'fulfilled' ? r.value : null)
+                                .filter((q): q is QuoteData => q !== null)
+                                .sort((a, b) => Math.abs(b.changePercent) - Math.abs(a.changePercent))
+                            cacheSet('movers', { gainers: quotes.filter(q => q.changePercent >= 0).slice(0, 5), losers: quotes.filter(q => q.changePercent < 0).slice(0, 5) })
+                        })
+                        : Promise.resolve(),
+                ])
+                aiLog('INFO', 'summary', `Market data warm-up took ${Date.now() - cacheT0}ms`)
+            }
+
+            const snapshot = (() => { try { return buildMarketSnapshot() } catch (e) { aiLog('WARN', 'summary', 'buildMarketSnapshot failed', e); return '(market snapshot unavailable)' } })()
+
+            const model = process.env.FINANCIAL_DASHBOARD_MODEL ?? 'claude-sonnet-4-6'
+            aiLog('INFO', 'summary', `Calling Anthropic API (model=${model})…`)
+            const apiT0 = Date.now()
+
+            const response = await fetch('https://api.anthropic.com/v1/messages', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'x-api-key': apiKey,
+                    'anthropic-version': '2023-06-01',
+                },
+                body: JSON.stringify({
+                    model,
+                    max_tokens: 512,
+                    system: `You are a concise Wall Street market analyst writing a brief market summary for a financial dashboard. Write 2-4 sentences covering: overall market direction with key index moves (S&P 500, Dow, Nasdaq), notable sector or volatility trends, and current sentiment. Use **bold** for key numbers and tickers. Be specific with numbers. Do not use headers or bullet points — this is a short paragraph summary. Never say "as of my knowledge cutoff" — you are analyzing live data.${lang === 'zh' ? ' Write entirely in Traditional Chinese (繁體中文). Use professional Traditional Chinese financial terminology.' : ''}`,
+                    messages: [
+                        {
+                            role: 'user',
+                            content: `Here is today's live market data. Write a brief market summary now.\n\n${snapshot}`,
+                        },
+                    ],
+                }),
+                signal: AbortSignal.timeout(30000),
+            })
+
+            aiLog('INFO', 'summary', `Anthropic API responded ${response.status} in ${Date.now() - apiT0}ms`)
+
+            if (!response.ok) {
+                const err = await response.json().catch(() => ({}))
+                aiLog('ERROR', 'summary', `Anthropic API error ${response.status}`, err)
+                throw Object.assign(new Error('Anthropic API error'), { statusCode: 502, detail: err })
+            }
+
+            const data = await response.json() as { content?: Array<{ text?: string }>; usage?: { input_tokens?: number; output_tokens?: number } }
+            const text = data.content?.[0]?.text ?? ''
+            aiLog('INFO', 'summary', `Summary generated — ${text.length} chars, tokens: in=${data.usage?.input_tokens ?? '?'} out=${data.usage?.output_tokens ?? '?'}, total time ${Date.now() - t0}ms`)
+
+            const result: PersistedAnalysis = { analysis: text, generatedAt: new Date().toISOString() }
+            writeSummary(lang, result)
+            return result
+        }
+
+        // In-flight summary generation tracker (prevents duplicate concurrent generations)
+        const summaryGenerating = new Set<string>()
+
+        // ── Market Summary: GET — returns persisted summary, auto-refreshes if stale
+        server.get<{ Querystring: { lang?: string } }>(
+            `${prefix}/api/summary`,
+            { config: { public: true } } as never,
+            async (req) => {
+                const lang = req.query.lang === 'zh' ? 'zh' : 'en'
+                const persisted = readSummary(lang)
+
+                // If stale, trigger background regeneration (fire-and-forget)
+                if (isSummaryStale(persisted?.generatedAt ?? null) && !summaryGenerating.has(lang)) {
+                    summaryGenerating.add(lang)
+                    generateSummary(lang)
+                        .catch(err => aiLog('WARN', 'summary', `Background refresh failed: ${String(err)}`))
+                        .finally(() => summaryGenerating.delete(lang))
+                }
+
+                return persisted ?? { analysis: null, generatedAt: null }
+            },
+        )
+
+        // ── Market Summary: POST — force-generates fresh summary ────────────
+        server.post<{ Body: { lang?: string } }>(
+            `${prefix}/api/summary/refresh`,
+            { config: { public: true } } as never,
+            async (req, reply) => {
+                const lang = req.body?.lang === 'zh' ? 'zh' : 'en'
+                try {
+                    return await generateSummary(lang)
+                } catch (err: unknown) {
+                    const e = err as { statusCode?: number; message?: string; detail?: unknown }
+                    return reply.code(e.statusCode ?? 502).send({ error: e.message ?? 'Failed to generate summary', detail: e.detail })
                 }
             },
         )

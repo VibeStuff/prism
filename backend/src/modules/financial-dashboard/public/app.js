@@ -60,6 +60,8 @@ const STRINGS = {
     errOracle: '⚠ Unable to load Polymarket',
     errNoData: '⚠ No data',
     errAsset:  '⚠ Asset data unavailable',
+    noSummaryYet: 'No summary yet — click ↻ to generate one.',
+    summaryGeneratedAt: t => `Generated ${t}`,
   },
   zh: {
     title: '市場',
@@ -114,6 +116,8 @@ const STRINGS = {
     errOracle: '⚠ 無法載入 Polymarket',
     errNoData: '⚠ 無資料',
     errAsset:  '⚠ 資產資料無法取得',
+    noSummaryYet: '尚無摘要 — 點擊 ↻ 生成',
+    summaryGeneratedAt: t => `生成於 ${t}`,
   },
 }
 
@@ -348,7 +352,6 @@ function applyI18n() {
   // Re-render all sections whose content changes with lang
   if (lastIndices) {
     renderIndexBar(lastIndices)
-    renderSummary(lastIndices)
 
     // Update subtitle with current locale
     const sp = lastIndices.find(q => q.symbol === '^GSPC')
@@ -370,8 +373,9 @@ function applyI18n() {
     .then(items => { renderOracle(items) })
     .catch(() => { /* keep existing oracle if fetch fails */ })
 
-  // Load the persisted analysis for the newly selected language
+  // Load the persisted analysis and summary for the newly selected language
   loadAnalysis()
+  loadSummary()
 }
 
 // ── Status Indicator ──────────────────────────────────────────────────────────
@@ -695,33 +699,58 @@ function reloadNews() {
 
 document.getElementById('news-reload-btn').addEventListener('click', reloadNews)
 
-// ── Market Summary ────────────────────────────────────────────────────────────
+// ── Market Summary (AI-generated) ────────────────────────────────────────────
 
-function renderSummary(indices) {
+function renderSummaryData(data) {
   const body = document.getElementById('summary-body')
-  if (!indices || !indices.length) {
-    body.innerHTML = `<div class="panel-error">${S.errData}</div>`
-    return
-  }
-
-  const sp  = indices.find(q => q.symbol === '^GSPC')
-  const dow = indices.find(q => q.symbol === '^DJI')
-  const nq  = indices.find(q => q.symbol === '^IXIC')
-  const vix = indices.find(q => q.symbol === '^VIX')
-
-  const spPct  = sp?.changePercent ?? 0
-  const spDir  = spPct >= 0 ? S.dirUp : S.dirDown
-  const sentiment = sp
-    ? (spPct > 1 ? S.sentStrongBull : spPct > 0 ? S.sentBull : spPct > -1 ? S.sentBear : S.sentDown)
-    : ''
-
-  const lines = []
-  if (sp)        lines.push(S.summaryEquities(spDir, fmtInt.format(sp.price), fmtChange(spPct), sentiment))
-  if (dow && nq) lines.push(S.summaryDowNasdaq(fmtInt.format(dow.price), fmtChange(dow.changePercent ?? 0), fmtInt.format(nq.price), fmtChange(nq.changePercent ?? 0)))
-  if (vix)       lines.push(S.summaryVix(vix.price))
-
-  body.innerHTML = `<div class="summary-text">${lines.map(l => `<p>${esc(l)}</p>`).join('')}</div>`
+  body.innerHTML = `<div class="summary-text">${md(data.analysis)}</div>
+    <div class="analysis-meta">${S.summaryGeneratedAt(timeAgo(data.generatedAt))}</div>`
 }
+
+async function loadSummary() {
+  const body = document.getElementById('summary-body')
+  try {
+    const data = await apiFetch(`/api/summary?lang=${currentLang}`)
+    if (!data.analysis) {
+      body.innerHTML = `<div class="analysis-meta" style="text-align:center;padding:16px 0">
+        ${esc(S.noSummaryYet)}
+      </div>`
+      return
+    }
+    renderSummaryData(data)
+  } catch (err) {
+    body.innerHTML = `<div class="panel-error">⚠ ${esc(err.message)}</div>`
+  }
+}
+
+async function refreshSummary() {
+  const body = document.getElementById('summary-body')
+  const btn  = document.getElementById('summary-refresh-btn')
+
+  body.innerHTML = `<div class="skeleton" style="height:80px;border-radius:8px"></div>`
+  btn.disabled = true
+  btn.classList.add('spinning')
+
+  try {
+    const res = await fetch(API + '/api/summary/refresh', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ lang: currentLang }),
+    })
+    if (!res.ok) {
+      const e = await res.json().catch(() => ({}))
+      throw new Error(e.error ?? `HTTP ${res.status}`)
+    }
+    renderSummaryData(await res.json())
+  } catch (err) {
+    body.innerHTML = `<div class="panel-error">⚠ ${esc(err.message)}</div>`
+  } finally {
+    btn.disabled = false
+    btn.classList.remove('spinning')
+  }
+}
+
+document.getElementById('summary-refresh-btn').addEventListener('click', refreshSummary)
 
 // ── Asset Highlights ──────────────────────────────────────────────────────────
 
@@ -1157,7 +1186,6 @@ async function loadAll() {
   const indicesP = apiFetch(`/api/indices?range=${currentRange}`).then(indices => {
     lastIndices = indices
     renderIndexBar(indices)
-    renderSummary(indices)
     if (indices?.length) {
       const sp = indices.find(q => q.symbol === '^GSPC')
       if (sp) {
@@ -1206,6 +1234,9 @@ async function loadAll() {
 
   // Assets fetch independently (has its own skeleton handling)
   renderAssets()
+
+  // Summary is AI-generated, loaded independently
+  loadSummary()
 
   // Wait for all to settle before updating the status indicator and ticker tape
   await Promise.allSettled([indicesP, sectorsP, watchlistP, newsP, moversP, oracleP])
