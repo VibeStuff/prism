@@ -63,6 +63,13 @@
               <button class="filter-clear-btn" id="news-filter-clear" title="Clear filter">✕</button>
             </span>
           </div>
+          <div class="news-search-row">
+            <svg class="news-search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+            </svg>
+            <input type="text" id="news-search-input" class="news-search-input" placeholder="Search headlines…" autocomplete="off" maxlength="100" />
+            <button type="button" id="news-search-clear" class="news-search-clear" style="display:none" title="Clear search">✕</button>
+          </div>
           <div id="news-body"><div class="skeleton" style="height:300px;border-radius:8px"></div></div>
           <div id="news-footer" style="display:none;text-align:center;padding-top:12px">
             <button id="news-more-btn" class="btn-load-more">Load more</button>
@@ -91,32 +98,54 @@
           <div id="trending-body"><div class="skeleton" style="height:100px;border-radius:8px"></div></div>
         </div>
 
-        <div class="fd-card" id="analysis-panel">
-          <div class="fd-card-title" style="display:flex;align-items:center;justify-content:space-between">
-            <span id="title-analysis">AI Analysis</span>
-            <button id="analysis-refresh-btn" class="btn-refresh" title="Refresh analysis">↺</button>
-          </div>
-          <div id="analysis-body"><div class="skeleton" style="height:120px;border-radius:8px"></div></div>
-          <div class="chat-input-row">
-            <input
-              type="text"
-              id="chat-input"
-              class="chat-input"
-              placeholder="Ask AI… add TSLA, focus news on Fed…"
-              autocomplete="off"
-              maxlength="200"
-            />
-            <button id="chat-send-btn" class="chat-send-btn" title="Send">
-              <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-                <path d="M1 7h12M8 2l5 5-5 5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
-              </svg>
-            </button>
-          </div>
-          <div id="chat-actions" class="chat-actions" style="display:none"></div>
-        </div>
       </aside>
     </div>
   </div>
+
+  <!-- AI Drawer overlay + panel -->
+  <div class="ai-drawer-overlay" id="ai-drawer-overlay"></div>
+  <aside class="ai-drawer" id="ai-drawer">
+    <div class="ai-drawer-header">
+      <div class="ai-drawer-title">
+        <svg class="ai-drawer-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="3" y="11" width="18" height="10" rx="2"/><circle cx="12" cy="5" r="4"/><circle cx="9" cy="16" r="1.2" fill="currentColor" stroke="none"/><circle cx="15" cy="16" r="1.2" fill="currentColor" stroke="none"/><line x1="10" y1="19" x2="14" y2="19"/>
+        </svg>
+        <span id="title-analysis">AI Analysis</span>
+      </div>
+      <button id="ai-drawer-close" class="ai-drawer-close" title="Close">&times;</button>
+    </div>
+    <div class="ai-drawer-body">
+      <div class="fd-card" id="analysis-panel" style="border:none;box-shadow:none;background:transparent;padding:0">
+        <div style="display:flex;align-items:center;justify-content:flex-end;margin-bottom:10px">
+          <button id="analysis-refresh-btn" class="btn-refresh" title="Refresh analysis">↺</button>
+        </div>
+        <div id="analysis-body"><div class="skeleton" style="height:120px;border-radius:8px"></div></div>
+        <div class="chat-input-row">
+          <input
+            type="text"
+            id="chat-input"
+            class="chat-input"
+            placeholder="Ask AI… add TSLA, focus news on Fed…"
+            autocomplete="off"
+            maxlength="200"
+          />
+          <button id="chat-send-btn" class="chat-send-btn" title="Send">
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+              <path d="M1 7h12M8 2l5 5-5 5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </button>
+        </div>
+        <div id="chat-actions" class="chat-actions" style="display:none"></div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Floating AI toggle button -->
+  <button class="ai-fab" id="ai-fab" title="AI Analysis">
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+      <rect x="3" y="11" width="18" height="10" rx="2"/><circle cx="12" cy="5" r="4"/><circle cx="9" cy="16" r="1.2" fill="currentColor" stroke="none"/><circle cx="15" cy="16" r="1.2" fill="currentColor" stroke="none"/><line x1="10" y1="19" x2="14" y2="19"/>
+    </svg>
+  </button>
 
   <div class="toasts" id="toasts"></div>
   <script src="{{ASSETS}}/app.js"></script>

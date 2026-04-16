@@ -24,6 +24,7 @@ const STRINGS = {
     trending: 'Trending',
     aiAnalysis: 'AI Analysis',
     chatPlaceholder: 'Ask AI… add TSLA, focus news on Fed…',
+    searchHeadlines: 'Search headlines…',
     noAnalysisYet: 'No analysis yet — click ↺ to generate one.',
     generatedAt: t => `Generated ${t}`,
     statusConnecting: 'Connecting…',
@@ -72,6 +73,7 @@ const STRINGS = {
     trending: '熱門股',
     aiAnalysis: 'AI 分析',
     chatPlaceholder: '詢問 AI… 新增 TSLA、聚焦聯準會新聞…',
+    searchHeadlines: '搜尋新聞…',
     noAnalysisYet: '尚無分析 — 點擊 ↺ 生成',
     generatedAt: t => `生成於 ${t}`,
     statusConnecting: '連線中…',
@@ -236,6 +238,7 @@ function applyI18n() {
   set('title-trending',    S.trending)
   set('title-analysis',    S.aiAnalysis)
   ph ('chat-input',        S.chatPlaceholder)
+  ph ('news-search-input', S.searchHeadlines)
 
   // Lang toggle active state
   document.querySelectorAll('.lang-btn').forEach(btn => {
@@ -504,6 +507,11 @@ function renderNews() {
 function clearNewsFilter() {
   newsFilter = null
   newsShown  = 10
+  // Also clear the search input if it was driving the filter
+  const searchInput = document.getElementById('news-search-input')
+  const searchClear = document.getElementById('news-search-clear')
+  if (searchInput) { searchInput.value = '' }
+  if (searchClear) { searchClear.style.display = 'none' }
   renderNews()
 }
 
@@ -887,6 +895,71 @@ document.querySelectorAll('.lang-btn').forEach(btn => {
     applyI18n()
   })
 })
+
+// ── News Search ──────────────────────────────────────────────────────────────
+
+;(function initNewsSearch() {
+  const searchInput = document.getElementById('news-search-input')
+  const searchClear = document.getElementById('news-search-clear')
+  let searchTimeout = null
+
+  searchInput.addEventListener('input', () => {
+    clearTimeout(searchTimeout)
+    const q = searchInput.value.trim()
+    searchClear.style.display = q ? 'block' : 'none'
+    searchTimeout = setTimeout(() => {
+      if (q) {
+        newsFilter = { keywords: q.split(/\s+/), label: q }
+      } else {
+        newsFilter = null
+      }
+      newsShown = 10
+      renderNews()
+    }, 220)
+  })
+
+  searchClear.addEventListener('click', () => {
+    searchInput.value = ''
+    searchClear.style.display = 'none'
+    newsFilter = null
+    newsShown = 10
+    renderNews()
+  })
+})()
+
+// ── AI Drawer ────────────────────────────────────────────────────────────────
+
+;(function initAIDrawer() {
+  const fab     = document.getElementById('ai-fab')
+  const drawer  = document.getElementById('ai-drawer')
+  const overlay = document.getElementById('ai-drawer-overlay')
+  const closeBtn = document.getElementById('ai-drawer-close')
+
+  function openDrawer() {
+    drawer.classList.add('open')
+    overlay.classList.add('open')
+    fab.classList.add('active')
+  }
+
+  function closeDrawer() {
+    drawer.classList.remove('open')
+    overlay.classList.remove('open')
+    fab.classList.remove('active')
+  }
+
+  function toggleDrawer() {
+    if (drawer.classList.contains('open')) closeDrawer()
+    else openDrawer()
+  }
+
+  fab.addEventListener('click', toggleDrawer)
+  closeBtn.addEventListener('click', closeDrawer)
+  overlay.addEventListener('click', closeDrawer)
+
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape' && drawer.classList.contains('open')) closeDrawer()
+  })
+})()
 
 // ── Boot ──────────────────────────────────────────────────────────────────────
 
