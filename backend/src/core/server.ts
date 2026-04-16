@@ -1,3 +1,4 @@
+import 'dotenv/config'
 import Fastify from 'fastify'
 import fastifyJwt from '@fastify/jwt'
 import fastifyStatic from '@fastify/static'
