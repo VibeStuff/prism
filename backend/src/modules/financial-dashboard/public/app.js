@@ -25,6 +25,9 @@ const STRINGS = {
     aiAnalysis: 'AI Analysis',
     chatPlaceholder: 'Ask AI… add TSLA, focus news on Fed…',
     searchHeadlines: 'Search headlines…',
+    marketAnalysis: 'Market Analysis',
+    chatEmpty: 'Ask anything about the markets…',
+    newConversation: 'New conversation',
     noAnalysisYet: 'No analysis yet — click ↺ to generate one.',
     generatedAt: t => `Generated ${t}`,
     statusConnecting: 'Connecting…',
@@ -74,6 +77,9 @@ const STRINGS = {
     aiAnalysis: 'AI 分析',
     chatPlaceholder: '詢問 AI… 新增 TSLA、聚焦聯準會新聞…',
     searchHeadlines: '搜尋新聞…',
+    marketAnalysis: '市場分析',
+    chatEmpty: '詢問任何市場相關問題…',
+    newConversation: '新對話',
     noAnalysisYet: '尚無分析 — 點擊 ↺ 生成',
     generatedAt: t => `生成於 ${t}`,
     statusConnecting: '連線中…',
@@ -214,6 +220,7 @@ let newsShown   = 10
 let newsFilter  = null   // { keywords: string[], label: string } | null
 let lastIndices = null
 let lastMovers  = null
+let chatLog     = []     // { role: 'user'|'assistant', text: string, time: string, actions?: [] }
 
 // ── i18n Application ──────────────────────────────────────────────────────────
 
@@ -236,9 +243,12 @@ function applyI18n() {
   set('title-assets',      S.assets)
   set('title-movers',      S.movers)
   set('title-trending',    S.trending)
-  set('title-analysis',    S.aiAnalysis)
-  ph ('chat-input',        S.chatPlaceholder)
-  ph ('news-search-input', S.searchHeadlines)
+  set('title-analysis',         S.aiAnalysis)
+  ph ('chat-input',             S.chatPlaceholder)
+  ph ('news-search-input',      S.searchHeadlines)
+  set('analysis-toggle-label',  S.marketAnalysis)
+  set('chat-empty-text',        S.chatEmpty)
+  document.getElementById('chat-clear-btn').title = S.newConversation
 
   // Lang toggle active state
   document.querySelectorAll('.lang-btn').forEach(btn => {
@@ -726,50 +736,99 @@ async function refreshAnalysis() {
 
 document.getElementById('analysis-refresh-btn').addEventListener('click', refreshAnalysis)
 
-// ── Chat ──────────────────────────────────────────────────────────────────────
+// ── Chat Log ─────────────────────────────────────────────────────────────────
 
-async function sendChat() {
-  const input       = document.getElementById('chat-input')
-  const sendBtn     = document.getElementById('chat-send-btn')
-  const analysisBody = document.getElementById('analysis-body')
-  const actionsEl   = document.getElementById('chat-actions')
-  const message     = input.value.trim()
-  if (!message) return
+function chatTimeNow() {
+  return new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
+}
 
-  input.value = ''
-  input.disabled  = true
-  sendBtn.disabled = true
-  sendBtn.classList.add('sending')
+function renderChatLog() {
+  const logEl  = document.getElementById('chat-log')
+  const empty  = document.getElementById('chat-empty')
 
-  analysisBody.innerHTML = `<div class="chat-thinking">
-    <span class="thinking-dot"></span><span class="thinking-dot"></span><span class="thinking-dot"></span>
-  </div>`
-  actionsEl.style.display = 'none'
-  actionsEl.innerHTML = ''
+  if (!chatLog.length) {
+    empty.style.display = 'flex'
+    // Remove all bubbles but keep the empty placeholder
+    logEl.querySelectorAll('.chat-bubble, .chat-bubble-time, .chat-bubble-actions, .chat-typing').forEach(el => el.remove())
+    return
+  }
 
-  try {
-    const data = await (async () => {
-      const res = await fetch(API + '/api/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message }),
-      })
-      if (!res.ok) {
-        const e = await res.json().catch(() => ({}))
-        throw new Error(e.error ?? `HTTP ${res.status}`)
-      }
-      return res.json()
-    })()
+  empty.style.display = 'none'
 
-    if (data.response) {
-      const paragraphs = data.response
+  let html = ''
+  for (const msg of chatLog) {
+    if (msg.role === 'user') {
+      html += `<div class="chat-bubble user">${esc(msg.text)}</div>`
+      html += `<div class="chat-bubble-time right">${esc(msg.time)}</div>`
+    } else {
+      const paragraphs = msg.text
         .split(/\n\n+/)
         .map(p => p.trim())
         .filter(Boolean)
         .map(p => `<p>${esc(p)}</p>`)
         .join('')
-      analysisBody.innerHTML = `<div class="analysis-text">${paragraphs}</div>`
+      html += `<div class="chat-bubble assistant">${paragraphs}</div>`
+      if (msg.actions?.length) {
+        html += `<div class="chat-bubble-actions">${msg.actions.join('')}</div>`
+      }
+      html += `<div class="chat-bubble-time">${esc(msg.time)}</div>`
     }
+  }
+
+  // Preserve empty element, replace everything else
+  const frag = document.createRange().createContextualFragment(html)
+  logEl.querySelectorAll('.chat-bubble, .chat-bubble-time, .chat-bubble-actions, .chat-typing').forEach(el => el.remove())
+  logEl.appendChild(frag)
+
+  // Auto-scroll to bottom
+  requestAnimationFrame(() => { logEl.scrollTop = logEl.scrollHeight })
+}
+
+function showTypingIndicator() {
+  const logEl = document.getElementById('chat-log')
+  document.getElementById('chat-empty').style.display = 'none'
+  // Remove any existing typing indicator
+  logEl.querySelectorAll('.chat-typing').forEach(el => el.remove())
+  const typing = document.createElement('div')
+  typing.className = 'chat-typing'
+  typing.innerHTML = '<span class="thinking-dot"></span><span class="thinking-dot"></span><span class="thinking-dot"></span>'
+  logEl.appendChild(typing)
+  requestAnimationFrame(() => { logEl.scrollTop = logEl.scrollHeight })
+}
+
+function removeTypingIndicator() {
+  document.getElementById('chat-log').querySelectorAll('.chat-typing').forEach(el => el.remove())
+}
+
+async function sendChat() {
+  const input   = document.getElementById('chat-input')
+  const sendBtn = document.getElementById('chat-send-btn')
+  const message = input.value.trim()
+  if (!message) return
+
+  // Push user message immediately
+  chatLog.push({ role: 'user', text: message, time: chatTimeNow() })
+  renderChatLog()
+
+  input.value = ''
+  input.disabled  = true
+  sendBtn.disabled = true
+  sendBtn.classList.add('sending')
+  showTypingIndicator()
+
+  try {
+    const res = await fetch(API + '/api/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message }),
+    })
+    if (!res.ok) {
+      const e = await res.json().catch(() => ({}))
+      throw new Error(e.error ?? `HTTP ${res.status}`)
+    }
+    const data = await res.json()
+
+    removeTypingIndicator()
 
     let watchlistChanged = false
     const actionBadges = []
@@ -794,9 +853,15 @@ async function sendChat() {
       }
     }
 
-    if (actionBadges.length) {
-      actionsEl.innerHTML = actionBadges.join('')
-      actionsEl.style.display = 'flex'
+    // Push assistant message
+    if (data.response) {
+      chatLog.push({
+        role: 'assistant',
+        text: data.response,
+        time: chatTimeNow(),
+        actions: actionBadges.length ? actionBadges : undefined,
+      })
+      renderChatLog()
     }
 
     if (watchlistChanged) {
@@ -806,7 +871,9 @@ async function sendChat() {
       } catch { /* non-fatal */ }
     }
   } catch (err) {
-    analysisBody.innerHTML = `<div class="panel-error">⚠ ${esc(err.message)}</div>`
+    removeTypingIndicator()
+    chatLog.push({ role: 'assistant', text: `⚠ ${err.message}`, time: chatTimeNow() })
+    renderChatLog()
     toast(err.message, 'err')
   } finally {
     input.disabled   = false
@@ -819,6 +886,25 @@ async function sendChat() {
 document.getElementById('chat-send-btn').addEventListener('click', sendChat)
 document.getElementById('chat-input').addEventListener('keydown', e => {
   if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChat() }
+})
+
+// ── Clear Chat ───────────────────────────────────────────────────────────────
+
+document.getElementById('chat-clear-btn').addEventListener('click', async () => {
+  chatLog = []
+  renderChatLog()
+  try { await apiDelete('/api/chat/history') } catch { /* non-fatal */ }
+})
+
+// ── Analysis Toggle ──────────────────────────────────────────────────────────
+
+document.getElementById('analysis-toggle').addEventListener('click', (e) => {
+  // Don't toggle if clicking the refresh button inside
+  if (e.target.closest('.btn-refresh')) return
+  const toggle = document.getElementById('analysis-toggle')
+  const body   = document.getElementById('analysis-collapsible')
+  toggle.classList.toggle('collapsed')
+  body.classList.toggle('collapsed')
 })
 
 // ── Main Load ─────────────────────────────────────────────────────────────────

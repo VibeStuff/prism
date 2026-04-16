@@ -55,7 +55,7 @@ interface CacheEntry {
     ts: number
 }
 
-// ─── Web Search ──────────────────────────────────────────────────────────────
+// ─── Web Search (SearXNG) ────────────────────────────────────────────────────
 
 interface SearchResult {
     title: string
@@ -64,44 +64,33 @@ interface SearchResult {
 }
 
 async function fetchWebSearch(query: string, maxResults = 5): Promise<SearchResult[]> {
-    const url = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`
-    const res = await fetch(url, {
-        headers: {
-            'User-Agent': 'Mozilla/5.0 (compatible; Prism/1.0)',
-            'Accept': 'text/html',
-        },
+    const searxngUrl = process.env.SEARXNG_URL?.replace(/\/+$/, '')
+    if (!searxngUrl) throw new Error('SEARXNG_URL not configured')
+
+    const params = new URLSearchParams({
+        q: query,
+        format: 'json',
+        categories: 'general',
+        language: 'en',
+    })
+
+    const res = await fetch(`${searxngUrl}/search?${params}`, {
+        headers: { Accept: 'application/json' },
         signal: AbortSignal.timeout(10000),
     })
-    if (!res.ok) throw new Error(`Search returned ${res.status}`)
-    const html = await res.text()
 
+    if (!res.ok) throw new Error(`SearXNG returned ${res.status}`)
+
+    const data = await res.json() as { results?: Array<{ title?: string; url?: string; content?: string }> }
     const results: SearchResult[] = []
-    // Parse DuckDuckGo HTML results
-    const resultBlocks = html.split('class="result__body"')
-    for (let i = 1; i < resultBlocks.length && results.length < maxResults; i++) {
-        const block = resultBlocks[i]
 
-        // Extract title
-        const titleMatch = block.match(/class="result__a"[^>]*>([^<]+)</)
-        const title = titleMatch?.[1]?.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&#x27;/g, "'").replace(/&quot;/g, '"').trim() ?? ''
-
-        // Extract URL
-        const urlMatch = block.match(/href="([^"]*)"/)
-        let href = urlMatch?.[1] ?? ''
-        // DuckDuckGo wraps URLs in a redirect — extract the actual URL
-        const uddgMatch = href.match(/uddg=([^&]+)/)
-        if (uddgMatch) href = decodeURIComponent(uddgMatch[1])
-
-        // Extract snippet
-        const snippetMatch = block.match(/class="result__snippet"[^>]*>([\s\S]*?)<\/a>/)
-        const snippet = snippetMatch?.[1]
-            ?.replace(/<\/?b>/g, '')
-            .replace(/<[^>]+>/g, '')
-            .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&#x27;/g, "'").replace(/&quot;/g, '"')
-            .trim() ?? ''
-
-        if (title && href) {
-            results.push({ title, url: href, snippet })
+    for (const item of (data.results ?? [])) {
+        if (results.length >= maxResults) break
+        const title = item.title?.trim()
+        const url = item.url?.trim()
+        const snippet = item.content?.trim() ?? ''
+        if (title && url) {
+            results.push({ title, url, snippet })
         }
     }
 
@@ -122,6 +111,24 @@ function cacheGet<T>(key: string): T | null {
 
 function cacheSet(key: string, data: unknown): void {
     cache.set(key, { data, ts: Date.now() })
+}
+
+// ─── Chat History (in-memory conversation memory) ────────────────────────────
+
+const MAX_CHAT_HISTORY = 20 // max messages before trimming oldest pairs
+
+let chatHistory: AnthropicMessage[] = []
+
+function appendChatHistory(msg: AnthropicMessage): void {
+    chatHistory.push(msg)
+    // Trim oldest pairs if over limit (keep system-relevant recent context)
+    while (chatHistory.length > MAX_CHAT_HISTORY) {
+        chatHistory.shift()
+    }
+}
+
+function clearChatHistory(): void {
+    chatHistory = []
 }
 
 // ─── Watchlist persistence ────────────────────────────────────────────────────
@@ -808,9 +815,11 @@ ${snapshot}
 
 Keep responses concise — 1-3 sentences confirming what you did and any relevant insight. If asked to track or add a stock, use add_to_watchlist. If asked about news on a topic, use filter_news. If asked to show all news, use clear_news_filter. If the user asks about recent events, specific companies, earnings, economic data, or anything not in the market snapshot above, use web_search to find current information and incorporate it into your answer.`
 
-                const messages: AnthropicMessage[] = [
-                    { role: 'user', content: userMessage },
-                ]
+                // Append user message to persistent history
+                appendChatHistory({ role: 'user', content: userMessage })
+
+                // Build messages array from full history for context
+                const messages: AnthropicMessage[] = [...chatHistory]
 
                 const actions: Action[] = []
                 let responseText = ''
@@ -868,7 +877,22 @@ Keep responses concise — 1-3 sentences confirming what you did and any relevan
                     }
                 }
 
+                // Persist the final assistant response text to history
+                if (responseText) {
+                    appendChatHistory({ role: 'assistant', content: responseText })
+                }
+
                 return { response: responseText, actions }
+            },
+        )
+
+        // ── Clear Chat History ───────────────────────────────────────────────
+        server.delete(
+            `${prefix}/api/chat/history`,
+            { config: { public: true } } as never,
+            async () => {
+                clearChatHistory()
+                return { ok: true }
             },
         )
 
