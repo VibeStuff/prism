@@ -587,9 +587,16 @@ const FinancialDashboardModule: AppModule = {
         })
 
         // ── News ─────────────────────────────────────────────────────────────
+        // Google News Business RSS — much fresher than Yahoo Finance RSS
         const NEWS_FEEDS: Record<string, { url: string; defaultSource: string }> = {
-            en: { url: 'https://finance.yahoo.com/news/rss', defaultSource: 'Yahoo Finance' },
-            zh: { url: 'https://tw.stock.yahoo.com/rss',     defaultSource: 'Yahoo 股市' },
+            en: {
+                url: 'https://news.google.com/rss/topics/CAAqJggKIiBDQkFTRWdvSUwyMHZNRGx6TVdZU0FtVnVHZ0pWVXlnQVAB?hl=en-US&gl=US&ceid=US:en',
+                defaultSource: 'Google News',
+            },
+            zh: {
+                url: 'https://news.google.com/rss/topics/CAAqJggKIiBDQkFTRWdvSUwyMHZNRGx6TVdZU0FtVnVHZ0pWVXlnQVAB?hl=zh-TW&gl=TW&ceid=TW:zh-Hant',
+                defaultSource: 'Google 新聞',
+            },
         }
 
         server.get(`${prefix}/api/news`, { config: { public: true } } as never, async (_req, reply) => {
@@ -623,15 +630,20 @@ const FinancialDashboardModule: AppModule = {
                     }
                 }
 
-                const items = (parsed?.rss?.channel?.item ?? []).slice(0, 15).map(item => {
+                const items = (parsed?.rss?.channel?.item ?? []).slice(0, 20).map(item => {
                     const rawSource = item.source
                     const source = typeof rawSource === 'string'
                         ? rawSource
                         : (rawSource?.['#text'] ?? feed.defaultSource)
+                    // Google News appends " - Source" to titles; strip it since we have the source field
+                    let title = String(item.title ?? '')
+                    if (source && title.endsWith(` - ${source}`)) {
+                        title = title.slice(0, -(` - ${source}`).length)
+                    }
                     return {
-                        title: String(item.title ?? ''),
+                        title,
                         link: String(item.link ?? ''),
-                        description: String(item.description ?? '').replace(/<[^>]+>/g, '').trim().slice(0, 200),
+                        description: String(item.description ?? '').replace(/<[^>]+>/g, '').replace(/&nbsp;/g, ' ').trim().slice(0, 200),
                         pubDate: String(item.pubDate ?? ''),
                         source,
                     }
