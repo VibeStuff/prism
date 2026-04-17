@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Prism Financial Dashboard">
+  <defs>
+    <linearGradient id="amber" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#d19a26"/>
+      <stop offset="1" stop-color="#8d5e10"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" fill="#fffef7"/>
+  <polygon points="256,150 388,370 124,370" fill="none" stroke="url(#amber)" stroke-width="16" stroke-linejoin="round"/>
+  <polyline points="164,332 212,288 252,310 300,238 356,268"
+    fill="none" stroke="#b8831a" stroke-width="18" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

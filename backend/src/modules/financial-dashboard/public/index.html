@@ -2,8 +2,21 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>Financial Dashboard — Prism</title>
+  <meta name="description" content="Live market data, watchlist, news, and AI analysis for equities and indices." />
+
+  <!-- PWA -->
+  <link rel="manifest" href="{{PWA}}/manifest.webmanifest" />
+  <meta name="theme-color" content="#b8831a" />
+  <meta name="color-scheme" content="light" />
+  <link rel="icon" type="image/svg+xml" href="{{ASSETS}}/icon.svg" />
+  <link rel="apple-touch-icon" href="{{ASSETS}}/icon.svg" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="Markets" />
+
   <link rel="stylesheet" href="{{ASSETS}}/style.css" />
 </head>
 <body>
@@ -198,5 +211,14 @@
 
   <div class="toasts" id="toasts"></div>
   <script src="{{ASSETS}}/app.js"></script>
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker
+          .register('{{PWA}}/service-worker.js', { scope: '{{PWA}}' })
+          .catch(err => console.warn('[PWA] SW registration failed:', err))
+      })
+    }
+  </script>
 </body>
 </html>

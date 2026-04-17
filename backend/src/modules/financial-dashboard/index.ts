@@ -684,7 +684,31 @@ const FinancialDashboardModule: AppModule = {
                 .replaceAll('{{ASSETS}}/style.css', `${assetPrefix}/style.css?${cacheBust}`)
                 .replaceAll('{{ASSETS}}/app.js', `${assetPrefix}/app.js?${cacheBust}`)
                 .replaceAll('{{ASSETS}}', assetPrefix)
+                .replaceAll('{{PWA}}', prefix)
             reply.header('Cache-Control', 'no-cache, no-store, must-revalidate').type('text/html').send(html)
+        })
+
+        // ── PWA: Manifest ───────────────────────────────────────────────────
+        server.get(`${prefix}/manifest.webmanifest`, { config: { public: true } } as never, async (_req, reply) => {
+            const manifest = fs.readFileSync(path.join(publicDir, 'manifest.webmanifest'), 'utf-8')
+                .replaceAll('"icon.svg"', `"${assetPrefix}/icon.svg"`)
+                .replaceAll('"icon-maskable.svg"', `"${assetPrefix}/icon-maskable.svg"`)
+            reply
+                .header('Cache-Control', 'public, max-age=3600')
+                .type('application/manifest+json')
+                .send(manifest)
+        })
+
+        // ── PWA: Service Worker ─────────────────────────────────────────────
+        // Served at module prefix so its default scope covers the app page.
+        // Service-Worker-Allowed header lets us claim the exact prefix (no trailing slash).
+        server.get(`${prefix}/service-worker.js`, { config: { public: true } } as never, async (_req, reply) => {
+            const sw = fs.readFileSync(path.join(publicDir, 'service-worker.js'), 'utf-8')
+            reply
+                .header('Cache-Control', 'no-cache, no-store, must-revalidate')
+                .header('Service-Worker-Allowed', prefix)
+                .type('application/javascript')
+                .send(sw)
         })
 
         // ── Watchlist: Get ──────────────────────────────────────────────────
