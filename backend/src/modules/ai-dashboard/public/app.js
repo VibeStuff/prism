@@ -1420,6 +1420,32 @@ function setStatus(state, text) {
   txt.textContent = text
 }
 
+// ── Auto-refresh at market open/close ───────────────────
+
+function checkMarketHoursAndRefresh() {
+  // Check if we should auto-refresh based on market hours
+  const now = new Date()
+  
+  // Get current time in ET (Eastern Time)
+  const etTimeString = now.toLocaleString('en-US', { 
+    timeZone: 'America/New_York',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false
+  });
+  
+  const [etHours, etMinutes] = etTimeString.split(':').map(Number);
+  
+  // Check if it's market open time (9:30 AM ET) or market close time (4:00 PM ET)
+  const isMarketOpenTime = (etHours === 9 && etMinutes >= 30 && etMinutes <= 35);
+  const isMarketCloseTime = (etHours === 16 && etMinutes >= 0 && etMinutes <= 5);
+  
+  if (isMarketOpenTime || isMarketCloseTime) {
+    // Refresh widgets that use anthropic-summary data source
+    loadWidgets()
+  }
+}
+
 // ── Init ────────────────────────────────────────────────
 
 async function init() {
@@ -1430,6 +1456,12 @@ async function init() {
 
   await Promise.all([loadTabs(), loadMeta(), loadWidgets(), loadNews()])
   initSocket()
+  
+  // Check market hours and refresh every 15 minutes
+  setInterval(checkMarketHoursAndRefresh, 15 * 60 * 1000)
+  
+  // Initial check after 5 minutes
+  setTimeout(checkMarketHoursAndRefresh, 5 * 60 * 1000)
 }
 
 init()

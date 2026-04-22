@@ -119,6 +119,7 @@ const STRINGS = {
     errNoData: '⚠ 無資料',
     errAsset:  '⚠ 資產資料無法取得',
     noSummaryYet: '尚無摘要 — 點擊 ↻ 生成',
+    noAnalysisYet: '尚無分析 — 點擊 ↺ 生成。'
     summaryGeneratedAt: t => `生成於 ${t}`,
   },
 }
@@ -718,7 +719,7 @@ async function loadSummary() {
     const data = await apiFetch(`/api/analysis?lang=${currentLang}`)
     if (!data.analysis) {
       body.innerHTML = `<div class="analysis-meta" style="text-align:center;padding:16px 0">
-        ${esc(S.noAnalysisYet)}
+        ${esc(S.noSummaryYet)}
       </div>`
       return
     }
@@ -746,7 +747,24 @@ async function refreshSummary() {
       const e = await res.json().catch(() => ({}))
       throw new Error(e.error ?? `HTTP ${res.status}`)
     }
-    renderSummaryData(await res.json())
+    const data = await res.json()
+    renderSummaryData(data)
+
+    // Also update the AI Analysis tab to show the same content
+    const analysisBody = document.getElementById('analysis-body')
+    if (analysisBody) {
+      analysisBody.innerHTML = `<div class="analysis-text">${md(data.analysis)}</div>
+        <div class="analysis-meta">${S.generatedAt(timeAgo(data.generatedAt))}</div>`
+    }
+    
+    // Emit socket event to sync with AI dashboard
+    if (typeof io !== 'undefined') {
+      const socket = io()
+      socket.emit('ai-dashboard:update', {
+        type: 'widgets',
+        tab: null
+      })
+    }
   } catch (err) {
     body.innerHTML = `<div class="panel-error">⚠ ${esc(err.message)}</div>`
   } finally {
@@ -997,7 +1015,24 @@ async function refreshAnalysis() {
       const e = await res.json().catch(() => ({}))
       throw new Error(e.error ?? `HTTP ${res.status}`)
     }
-    renderAnalysis(await res.json())
+    const data = await res.json()
+    renderAnalysis(data)
+
+    // Also update the Market Summary widget to show the same content
+    const summaryBody = document.getElementById('summary-body')
+    if (summaryBody) {
+      summaryBody.innerHTML = `<div class="analysis-text">${md(data.analysis)}</div>
+        <div class="analysis-meta">${S.generatedAt(timeAgo(data.generatedAt))}</div>`
+    }
+    
+    // Emit socket event to sync with AI dashboard
+    if (typeof io !== 'undefined') {
+      const socket = io()
+      socket.emit('ai-dashboard:update', {
+        type: 'widgets',
+        tab: null
+      })
+    }
   } catch (err) {
     body.innerHTML = `<div class="panel-error">⚠ ${esc(err.message)}</div>`
   } finally {
@@ -1414,3 +1449,37 @@ loadAll()
 loadAnalysis()
 
 setInterval(() => { loadAll() }, 60_000)
+
+// Check for stale summaries and auto-refresh if needed
+function checkAndRefreshStaleSummaries() {
+  // Check if we should auto-refresh based on market hours
+  const now = new Date()
+  
+  // Get current time in ET (Eastern Time)
+  const etTimeString = now.toLocaleString('en-US', { 
+    timeZone: 'America/New_York',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false
+  });
+  
+  const [etHours, etMinutes] = etTimeString.split(':').map(Number);
+  
+  // Check if it's market open time (9:30 AM ET) or market close time (4:00 PM ET)
+  const isMarketOpenTime = (etHours === 9 && etMinutes >= 30 && etMinutes <= 35);
+  const isMarketCloseTime = (etHours === 16 && etMinutes >= 0 && etMinutes <= 5);
+  
+  if (isMarketOpenTime || isMarketCloseTime) {
+    // Refresh both Market Summary and AI Analysis
+    refreshSummary();
+    if (document.getElementById('analysis-body')) {
+      refreshAnalysis();
+    }
+  }
+}
+
+// Check every 15 minutes
+setInterval(checkAndRefreshStaleSummaries, 15 * 60 * 1000)
+
+// Initial check
+setTimeout(checkAndRefreshStaleSummaries, 5 * 60 * 1000)

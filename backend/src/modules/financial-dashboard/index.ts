@@ -266,6 +266,83 @@ function isSummaryStale(generatedAt: string | null): boolean {
     return genTime < lastBoundary
 }
 
+// ─── Get next market boundary time (for scheduling) ────────────────────────────
+
+function getNextMarketBoundary(): { nextTime: number; isOpen: boolean } {
+    const now = new Date()
+    const etStr = now.toLocaleString('en-US', { timeZone: 'America/New_York' })
+    const et = new Date(etStr)
+
+    // Today's market times
+    const todayOpen = new Date(et)
+    todayOpen.setHours(9, 30, 0, 0)
+    const todayClose = new Date(et)
+    todayClose.setHours(16, 0, 0, 0)
+
+    // Convert to UTC
+    const etOffsetMs = now.getTime() - et.getTime()
+    const todayOpenUtc = todayOpen.getTime() + etOffsetMs
+    const todayCloseUtc = todayClose.getTime() + etOffsetMs
+
+    // Check if we're before open, between open and close, or after close
+    if (now.getTime() < todayOpenUtc) {
+        // Before market open - next boundary is open
+        return { nextTime: todayOpenUtc, isOpen: true }
+    } else if (now.getTime() < todayCloseUtc) {
+        // During market hours - next boundary is close
+        return { nextTime: todayCloseUtc, isOpen: false }
+    } else {
+        // After market close - next boundary is tomorrow's open
+        const tomorrowOpenUtc = todayOpenUtc + 86400000
+        return { nextTime: tomorrowOpenUtc, isOpen: true }
+    }
+}
+
+// ─── Schedule automatic refreshes at market open/close ──────────────────────
+
+function scheduleMarketRefreshes(server: FastifyInstance) {
+    let timeoutId: NodeJS.Timeout | null = null
+
+    function scheduleNextRefresh() {
+        if (timeoutId) clearTimeout(timeoutId)
+
+        const { nextTime, isOpen } = getNextMarketBoundary()
+        const now = Date.now()
+        const delay = Math.max(0, nextTime - now)
+
+        server.log.info(`[FinancialDashboardModule] Next auto-refresh scheduled in ${Math.round(delay / 60000)} minutes (at ${new Date(nextTime).toLocaleString('en-US', { timeZone: 'America/New_York' })} ET) for market ${isOpen ? 'open' : 'close'}`)
+
+        timeoutId = setTimeout(async () => {
+            server.log.info(`[FinancialDashboardModule] Triggering auto-refresh at market ${isOpen ? 'open' : 'close'}`)
+
+            try {
+                // Refresh both English and Chinese summaries
+                await generateSummary('en')
+                await generateSummary('zh')
+
+                // Also refresh the full analysis
+                await generateAnalysis('en')
+                await generateAnalysis('zh')
+
+                server.log.info('[FinancialDashboardModule] Auto-refresh completed successfully')
+            } catch (err) {
+                server.log.error(`[FinancialDashboardModule] Auto-refresh failed: ${String(err)}`)
+            }
+
+            // Schedule the next refresh
+            scheduleNextRefresh()
+        }, delay)
+    }
+
+    // Start the scheduling
+    scheduleNextRefresh()
+
+    // Return cleanup function
+    return () => {
+        if (timeoutId) clearTimeout(timeoutId)
+    }
+}
+
 // ─── Oracle translation cache ────────────────────────────────────────────────
 
 interface MarketChip {
@@ -666,6 +743,9 @@ const FinancialDashboardModule: AppModule = {
         const publicDir = path.join(process.cwd(), 'src', 'modules', 'financial-dashboard', 'public')
         const assetPrefix = `${prefix}-assets`
         const cacheBust = `v=${Date.now()}`
+
+        // Start automatic refresh scheduler for market open/close
+        const cleanupScheduler = scheduleMarketRefreshes(server)
 
         // ── Page ────────────────────────────────────────────────────────────
         server.get(prefix, { 
@@ -1254,6 +1334,15 @@ const FinancialDashboardModule: AppModule = {
 
             const result: PersistedAnalysis = { analysis: text, generatedAt: new Date().toISOString() }
             writeAnalysis(lang, result)
+            // Also update the summary to keep them in sync
+            writeSummary(lang, result)
+
+            // Emit socket event to sync with AI dashboard
+            server.io?.to('ai-dashboard:viewers').emit('ai-dashboard:update', {
+                type: 'widgets',
+                tab: null
+            })
+
             return result
         }
 
@@ -1410,6 +1499,15 @@ async function generateSummary(lang: string): Promise<PersistedAnalysis> {
 
             const result: PersistedAnalysis = { analysis: text, generatedAt: new Date().toISOString() }
             writeSummary(lang, result)
+            // Also update the analysis to keep them in sync
+            writeAnalysis(lang, result)
+
+            // Emit socket event to sync with AI dashboard
+            server.io?.to('ai-dashboard:viewers').emit('ai-dashboard:update', {
+                type: 'widgets',
+                tab: null
+            })
+
             return result
         }
 
@@ -1576,6 +1674,13 @@ Keep responses concise — 1-3 sentences confirming what you did and any relevan
         )
 
         server.log.info(`[FinancialDashboardModule] Registered at ${prefix}`)
+    },
+
+    async unregister(): Promise<void> {
+        // Clean up the scheduler when module unregisters
+        if (cleanupScheduler) {
+            cleanupScheduler()
+        }
     },
 }
 
