@@ -726,7 +726,9 @@ const FinancialDashboardModule: AppModule = {
         const cacheBust = `v=${Date.now()}`
 
         // ── Page ────────────────────────────────────────────────────────────
-        server.get(prefix, { config: { public: true } } as never, async (_req, reply) => {
+        server.get(prefix, { 
+            config: { public: true } 
+        }, async (_req, reply) => {
             const html = fs.readFileSync(path.join(publicDir, 'index.html'), 'utf-8')
                 .replaceAll('{{ASSETS}}/style.css', `${assetPrefix}/style.css?${cacheBust}`)
                 .replaceAll('{{ASSETS}}/app.js', `${assetPrefix}/app.js?${cacheBust}`)

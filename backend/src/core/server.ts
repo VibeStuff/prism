@@ -42,9 +42,21 @@ async function bootstrap(): Promise<void> {
 
     // ── Auth — all routes require JWT unless marked { public: true } ──────────
     app.addHook('preHandler', async (request, reply) => {
+        // Skip authentication for asset routes
         if (/-assets\//.test(request.url)) return
+        
+        // Check if route is marked as public in config
         const routeOptions = request.routeOptions as { config?: { public?: boolean } }
-        if (routeOptions?.config?.public) return
+        if (routeOptions?.config?.public === true) {
+            return
+        }
+        
+        // Additional check for routes that might have public config in different location
+        const routeConfig = (request.routeOptions as any).config
+        if (routeConfig?.public === true) {
+            return
+        }
+        
         try {
             await request.jwtVerify()
         } catch {
