@@ -112,48 +112,6 @@ async function fetchWebSearch(query: string, maxResults = 5): Promise<SearchResu
     return results
 }
 
-    const url = 'https://ollama.com/api/web_search'
-    console.error(`[AI:search] Query: "${query}" → https://ollama.com/api/web_search`)
-    const t0 = Date.now()
-
-    const res = await fetch(url, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${ollamaApiKey}`,
-        },
-        body: JSON.stringify({
-            query,
-            max_results: maxResults,
-        }),
-        redirect: 'manual',
-        signal: AbortSignal.timeout(10000),
-    })
-
-    console.error(`[AI:search] Ollama Cloud responded ${res.status} in ${Date.now() - t0}ms`)
-
-    if (!res.ok) {
-        const errText = await res.text().catch(() => '')
-        throw new Error(`Ollama Cloud returned ${res.status}: ${errText}`)
-    }
-
-    const data = await res.json() as { results?: Array<{ title?: string; url?: string; content?: string }> }
-    const results: SearchResult[] = []
-
-    for (const item of (data.results ?? [])) {
-        if (results.length >= maxResults) break
-        const title = item.title?.trim()
-        const itemUrl = item.url?.trim()
-        const content = item.content?.trim() ?? ''
-        if (title && itemUrl) {
-            results.push({ title, url: itemUrl, content })
-        }
-    }
-
-    console.error(`[AI:search] Parsed ${results.length}/${data.results?.length ?? 0} results`)
-    return results
-}
-
 // ─── In-Memory Cache (60s TTL) ────────────────────────────────────────────────
 
 const cache = new Map<string, CacheEntry>()
@@ -662,6 +620,7 @@ async function executeTool(
         actions.push({ type: 'news_filter_clear' })
         return 'News filter cleared — showing all headlines'
     }
+];
 
     if (name === 'web_search') {
         const query = String(input.query ?? '').trim()
@@ -678,23 +637,10 @@ async function executeTool(
     }
 
     return `Unknown tool: ${name}`
-}
-
-    if (name === 'web_search') {
-        const query = String(input.query ?? '').trim()
-        if (!query) return 'Error: search query is required'
-        try {
-            const results = await fetchWebSearch(query, 5)
-            if (!results.length) return `No search results found for "${query}"`
-            return results.map((r, i) =>
-                `[${i + 1}] ${r.title}\n    ${r.url}\n    ${r.content}`
-            ).join('\n\n')
-        } catch (err) {
-            return `Search failed: ${String(err)}`
-        }
     }
 
     return `Unknown tool: ${name}`
+    }
 }
 
 // ─── Sector ETFs ──────────────────────────────────────────────────────────────
