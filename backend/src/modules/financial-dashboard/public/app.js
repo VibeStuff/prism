@@ -708,17 +708,17 @@ document.getElementById('news-reload-btn').addEventListener('click', reloadNews)
 
 function renderSummaryData(data) {
   const body = document.getElementById('summary-body')
-  body.innerHTML = `<div class="summary-text">${md(data.analysis)}</div>
-    <div class="analysis-meta">${S.summaryGeneratedAt(timeAgo(data.generatedAt))}</div>`
+  body.innerHTML = `<div class="analysis-text">${md(data.analysis)}</div>
+    <div class="analysis-meta">${S.generatedAt(timeAgo(data.generatedAt))}</div>`
 }
 
 async function loadSummary() {
   const body = document.getElementById('summary-body')
   try {
-    const data = await apiFetch(`/api/summary?lang=${currentLang}`)
+    const data = await apiFetch(`/api/analysis?lang=${currentLang}`)
     if (!data.analysis) {
       body.innerHTML = `<div class="analysis-meta" style="text-align:center;padding:16px 0">
-        ${esc(S.noSummaryYet)}
+        ${esc(S.noAnalysisYet)}
       </div>`
       return
     }
@@ -732,12 +732,12 @@ async function refreshSummary() {
   const body = document.getElementById('summary-body')
   const btn  = document.getElementById('summary-refresh-btn')
 
-  body.innerHTML = `<div class="skeleton" style="height:80px;border-radius:8px"></div>`
+  body.innerHTML = `<div class="skeleton" style="height:120px;border-radius:8px"></div>`
   btn.disabled = true
   btn.classList.add('spinning')
 
   try {
-    const res = await fetch(API + '/api/summary/refresh', {
+    const res = await fetch(API + '/api/analysis/refresh', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ lang: currentLang }),
