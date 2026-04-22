@@ -35,3 +35,5 @@ Thumbs.db
 backend/src/modules/financial-dashboard/analysis-zh.json
 
 backend/src/modules/financial-dashboard/analysis-en.json
+backend/src/modules/financial-dashboard/summary-en.json
+backend/src/modules/financial-dashboard/summary-zh.json

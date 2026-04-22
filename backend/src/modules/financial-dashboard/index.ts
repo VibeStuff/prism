@@ -64,46 +64,35 @@ interface SearchResult {
 }
 
 async function fetchWebSearch(query: string, maxResults = 5): Promise<SearchResult[]> {
-    const searxngUrl = process.env.SEARXNG_URL?.replace(/\/+$/, '')
-    if (!searxngUrl) {
-        console.error(`[AI:search] SEARXNG_URL not configured — skipping web search`)
-        throw new Error('SEARXNG_URL not configured')
+    const ollamaApiKey = process.env.OLLAMA_API_KEY?.trim()
+    if (!ollamaApiKey) {
+        console.error(`[AI:search] OLLAMA_API_KEY not configured — skipping web search`)
+        throw new Error('OLLAMA_API_KEY not configured')
     }
 
-    const params = new URLSearchParams({
-        q: query,
-        format: 'json',
-        categories: 'general',
-        language: 'en',
-    })
-
-    const url = `${searxngUrl}/search?${params}`
-    console.error(`[AI:search] Query: "${query}" → ${searxngUrl}/search?q=…`)
+    const url = 'https://ollama.com/api/web_search'
+    console.error(`[AI:search] Query: "${query}" → https://ollama.com/api/web_search`)
     const t0 = Date.now()
 
     const res = await fetch(url, {
-        headers: { Accept: 'application/json' },
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${ollamaApiKey}`,
+        },
+        body: JSON.stringify({
+            query,
+            max_results: maxResults,
+        }),
         redirect: 'manual',
         signal: AbortSignal.timeout(10000),
     })
 
-    console.error(`[AI:search] SearXNG responded ${res.status} in ${Date.now() - t0}ms`)
+    console.error(`[AI:search] Ollama Cloud responded ${res.status} in ${Date.now() - t0}ms`)
 
-    // Handle redirects — SearXNG may redirect to a preferences page
-    if (res.status >= 300 && res.status < 400) {
-        const location = res.headers.get('location')
-        console.error(`[AI:search] Redirected to: ${location} — SearXNG may need configuration`)
-        throw new Error('SearXNG redirected (check instance configuration)')
-    }
-
-    if (!res.ok) throw new Error(`SearXNG returned ${res.status}`)
-
-    // Verify we got JSON, not an HTML page
-    const contentType = res.headers.get('content-type') ?? ''
-    if (!contentType.includes('json')) {
-        const body = (await res.text()).slice(0, 100)
-        console.error(`[AI:search] Expected JSON but got ${contentType}: ${body}`)
-        throw new Error(`SearXNG returned HTML instead of JSON — add format=json to your instance settings or check SEARXNG_URL`)
+    if (!res.ok) {
+        const errText = await res.text().catch(() => '')
+        throw new Error(`Ollama Cloud returned ${res.status}: ${errText}`)
     }
 
     const data = await res.json() as { results?: Array<{ title?: string; url?: string; content?: string }> }
@@ -113,9 +102,51 @@ async function fetchWebSearch(query: string, maxResults = 5): Promise<SearchResu
         if (results.length >= maxResults) break
         const title = item.title?.trim()
         const itemUrl = item.url?.trim()
-        const snippet = item.content?.trim() ?? ''
+        const content = item.content?.trim() ?? ''
         if (title && itemUrl) {
-            results.push({ title, url: itemUrl, snippet })
+            results.push({ title, url: itemUrl, content })
+        }
+    }
+
+    console.error(`[AI:search] Parsed ${results.length}/${data.results?.length ?? 0} results`)
+    return results
+}
+
+    const url = 'https://ollama.com/api/web_search'
+    console.error(`[AI:search] Query: "${query}" → https://ollama.com/api/web_search`)
+    const t0 = Date.now()
+
+    const res = await fetch(url, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${ollamaApiKey}`,
+        },
+        body: JSON.stringify({
+            query,
+            max_results: maxResults,
+        }),
+        redirect: 'manual',
+        signal: AbortSignal.timeout(10000),
+    })
+
+    console.error(`[AI:search] Ollama Cloud responded ${res.status} in ${Date.now() - t0}ms`)
+
+    if (!res.ok) {
+        const errText = await res.text().catch(() => '')
+        throw new Error(`Ollama Cloud returned ${res.status}: ${errText}`)
+    }
+
+    const data = await res.json() as { results?: Array<{ title?: string; url?: string; content?: string }> }
+    const results: SearchResult[] = []
+
+    for (const item of (data.results ?? [])) {
+        if (results.length >= maxResults) break
+        const title = item.title?.trim()
+        const itemUrl = item.url?.trim()
+        const content = item.content?.trim() ?? ''
+        if (title && itemUrl) {
+            results.push({ title, url: itemUrl, content })
         }
     }
 
@@ -575,7 +606,6 @@ const CHAT_TOOLS = [
             type: 'object',
             properties: {},
         },
-    },
     {
         name: 'web_search',
         description: 'Search the web for current information about stocks, companies, market events, economic data, earnings reports, or any financial topic. Use this when the user asks about recent events, specific company news, or anything not covered by the live market data already provided.',
@@ -640,7 +670,24 @@ async function executeTool(
             const results = await fetchWebSearch(query, 5)
             if (!results.length) return `No search results found for "${query}"`
             return results.map((r, i) =>
-                `[${i + 1}] ${r.title}\n    ${r.url}\n    ${r.snippet}`
+                `[${i + 1}] ${r.title}\n    ${r.url}\n    ${r.content}`
+            ).join('\n\n')
+        } catch (err) {
+            return `Search failed: ${String(err)}`
+        }
+    }
+
+    return `Unknown tool: ${name}`
+}
+
+    if (name === 'web_search') {
+        const query = String(input.query ?? '').trim()
+        if (!query) return 'Error: search query is required'
+        try {
+            const results = await fetchWebSearch(query, 5)
+            if (!results.length) return `No search results found for "${query}"`
+            return results.map((r, i) =>
+                `[${i + 1}] ${r.title}\n    ${r.url}\n    ${r.content}`
             ).join('\n\n')
         } catch (err) {
             return `Search failed: ${String(err)}`
@@ -1185,18 +1232,43 @@ const FinancialDashboardModule: AppModule = {
             const snapshot = (() => { try { return buildMarketSnapshot() } catch (e) { aiLog('WARN', 'analysis', 'buildMarketSnapshot failed', e); return '(market snapshot unavailable)' } })()
             aiLog('INFO', 'analysis', `Snapshot built (${snapshot.length} chars)`)
 
-            // Fetch web search context for richer analysis
-            let searchContext = ''
+            // Fetch recent news to correlate with market movements
+            let newsContext = ''
             try {
-                aiLog('INFO', 'analysis', 'Fetching web search context…')
-                const searchResults = await fetchWebSearch('stock market today financial news', 5)
-                aiLog('INFO', 'analysis', `Web search returned ${searchResults.length} results`)
-                if (searchResults.length) {
-                    searchContext = '\n\n=== RECENT WEB HEADLINES ===\n' +
-                        searchResults.map(r => `• ${r.title}: ${r.snippet}`).join('\n')
+                aiLog('INFO', 'analysis', 'Fetching news context…')
+                const newsFeed = NEWS_FEEDS[lang] ?? NEWS_FEEDS.en
+                const res = await fetch(newsFeed.url, {
+                    headers: { 'User-Agent': 'Mozilla/5.0 (compatible; Prism/1.0)' },
+                    signal: AbortSignal.timeout(8000),
+                })
+                if (res.ok) {
+                    const xml = await res.text()
+                    const parser = new XMLParser({ ignoreAttributes: false })
+                    const parsed = parser.parse(xml) as {
+                        rss?: {
+                            channel?: {
+                                item?: Array<{
+                                    title?: string
+                                    description?: string
+                                    pubDate?: string
+                                }>
+                            }
+                        }
+                    }
+
+                    const items = (parsed?.rss?.channel?.item ?? []).slice(0, 15).map(item => ({
+                        title: String(item.title ?? ''),
+                        description: String(item.description ?? '').replace(/<[^>]+>/g, '').replace(/&nbsp;/g, ' ').trim().slice(0, 200),
+                        pubDate: String(item.pubDate ?? ''),
+                    })).sort((a, b) => new Date(b.pubDate).getTime() - new Date(a.pubDate).getTime())
+
+                    if (items.length) {
+                        newsContext = '\n\n=== RECENT NEWS HEADLINES ===\n' +
+                            items.map(item => `• ${item.title}: ${item.description}`).join('\n')
+                    }
                 }
             } catch (err) {
-                aiLog('WARN', 'analysis', 'Web search failed (non-fatal)', String(err))
+                aiLog('WARN', 'analysis', 'News fetch failed (non-fatal)', String(err))
             }
 
             const model = process.env.FINANCIAL_DASHBOARD_MODEL ?? 'claude-sonnet-4-6'
@@ -1213,11 +1285,11 @@ const FinancialDashboardModule: AppModule = {
                 body: JSON.stringify({
                     model,
                     max_tokens: 2048,
-                    system: `You are a concise Wall Street market analyst writing for a professional financial dashboard. Use markdown: **bold** key numbers/tickers, ### headers for sections, bullet points for lists. Keep it short and scannable — recommended length is around 150-250 words. Use 2-3 sections covering: market sentiment with key index moves, sector rotation highlights, and one risk to watch. Be specific with numbers. Never say "as of my knowledge cutoff" — you are analyzing live data.${lang === 'zh' ? ' Write entirely in Traditional Chinese (繁體中文). Use professional Traditional Chinese financial terminology.' : ''}`,
+                    system: `You are a concise Wall Street market analyst writing for a professional financial dashboard. Use markdown: **bold** key numbers/tickers, ### headers for sections, bullet points for lists. Keep it short and scannable — recommended length is around 150-250 words. Use 2-3 sections covering: market sentiment with key index moves, sector rotation highlights, and one risk to watch. Be specific with numbers. Never say "as of my knowledge cutoff" — you are analyzing live data. When explaining stock price movements or market events, search the web for current financial news articles to provide the reasons behind the changes. For example, search for earnings reports, analyst upgrades/downgrades, product launches, regulatory developments, or macroeconomic data that might explain specific stock or sector movements.${lang === 'zh' ? ' Write entirely in Traditional Chinese (繁體中文). Use professional Traditional Chinese financial terminology.' : ''}`,
                     messages: [
                         {
                             role: 'user',
-                            content: `Here is today's live market data. Write your analysis now.\n\n${snapshot}${searchContext}`,
+                            content: `Here is today's live market data. Write your analysis now.\n\n${snapshot}${newsContext}`,
                         },
                     ],
                 }),
@@ -1268,79 +1340,117 @@ const FinancialDashboardModule: AppModule = {
         )
 
         // ── Market Summary: helper to generate fresh summary ─────────────────
-        async function generateSummary(lang: string): Promise<PersistedAnalysis> {
-            const t0 = Date.now()
-            aiLog('INFO', 'summary', `Starting summary generation (lang=${lang})`)
+async function generateSummary(lang: string): Promise<PersistedAnalysis> {
+    const t0 = Date.now()
+    aiLog('INFO', 'summary', `Starting summary generation (lang=${lang})`)
 
-            const apiKey = process.env.ANTHROPIC_API_KEY
-            if (!apiKey) {
-                aiLog('ERROR', 'summary', 'ANTHROPIC_API_KEY not configured')
-                throw Object.assign(new Error('ANTHROPIC_API_KEY not configured'), { statusCode: 503 })
+    const apiKey = process.env.ANTHROPIC_API_KEY
+    if (!apiKey) {
+        aiLog('ERROR', 'summary', 'ANTHROPIC_API_KEY not configured')
+        throw Object.assign(new Error('ANTHROPIC_API_KEY not configured'), { statusCode: 503 })
+    }
+
+    // Warm the market data cache if cold
+    const needsIndices = !cacheGet('indices')
+    const needsSectors = !cacheGet('sectors')
+    const needsMovers = !cacheGet('movers')
+
+    if (needsIndices || needsSectors || needsMovers) {
+        const cacheT0 = Date.now()
+        await Promise.allSettled([
+            needsIndices
+                ? Promise.allSettled(INDEX_SYMBOLS.map(s => fetchYahooQuote(s))).then(results => {
+                    const data = results.map(r => r.status === 'fulfilled' ? r.value : null).filter((q): q is QuoteData => q !== null)
+                    cacheSet('indices', data)
+                })
+                : Promise.resolve(),
+            needsSectors
+                ? Promise.allSettled(Object.keys(SECTOR_ETFS).map(s => fetchYahooQuote(s))).then(results => {
+                    const etfs = Object.keys(SECTOR_ETFS)
+                    const data = results
+                        .map((r, i) => r.status === 'fulfilled' ? { ...r.value, longName: SECTOR_ETFS[etfs[i]] ?? r.value.longName } : null)
+                        .filter((q): q is QuoteData => q !== null)
+                        .sort((a, b) => b.changePercent - a.changePercent)
+                    cacheSet('sectors', data)
+                })
+                : Promise.resolve(),
+            needsMovers
+                ? Promise.allSettled(MOVERS_SYMBOLS.map(s => fetchYahooQuote(s))).then(results => {
+                    const quotes = results
+                        .map(r => r.status === 'fulfilled' ? r.value : null)
+                        .filter((q): q is QuoteData => q !== null)
+                        .sort((a, b) => Math.abs(b.changePercent) - Math.abs(a.changePercent))
+                    cacheSet('movers', { gainers: quotes.filter(q => q.changePercent >= 0).slice(0, 5), losers: quotes.filter(q => q.changePercent < 0).slice(0, 5) })
+                })
+                : Promise.resolve(),
+        ])
+        aiLog('INFO', 'summary', `Market data warm-up took ${Date.now() - cacheT0}ms`)
+    }
+
+    // Fetch recent news to correlate with market movements
+    let newsContext = ''
+    try {
+        const newsFeed = NEWS_FEEDS[lang] ?? NEWS_FEEDS.en
+        const res = await fetch(newsFeed.url, {
+            headers: { 'User-Agent': 'Mozilla/5.0 (compatible; Prism/1.0)' },
+            signal: AbortSignal.timeout(8000),
+        })
+        if (res.ok) {
+            const xml = await res.text()
+            const parser = new XMLParser({ ignoreAttributes: false })
+            const parsed = parser.parse(xml) as {
+                rss?: {
+                    channel?: {
+                        item?: Array<{
+                            title?: string
+                            description?: string
+                            pubDate?: string
+                        }>
+                    }
+                }
             }
 
-            // Warm the market data cache if cold
-            const needsIndices = !cacheGet('indices')
-            const needsSectors = !cacheGet('sectors')
-            const needsMovers = !cacheGet('movers')
+            const items = (parsed?.rss?.channel?.item ?? []).slice(0, 10).map(item => ({
+                title: String(item.title ?? ''),
+                description: String(item.description ?? '').replace(/<[^>]+>/g, '').replace(/&nbsp;/g, ' ').trim().slice(0, 200),
+                pubDate: String(item.pubDate ?? ''),
+            })).sort((a, b) => new Date(b.pubDate).getTime() - new Date(a.pubDate).getTime())
 
-            if (needsIndices || needsSectors || needsMovers) {
-                const cacheT0 = Date.now()
-                await Promise.allSettled([
-                    needsIndices
-                        ? Promise.allSettled(INDEX_SYMBOLS.map(s => fetchYahooQuote(s))).then(results => {
-                            const data = results.map(r => r.status === 'fulfilled' ? r.value : null).filter((q): q is QuoteData => q !== null)
-                            cacheSet('indices', data)
-                        })
-                        : Promise.resolve(),
-                    needsSectors
-                        ? Promise.allSettled(Object.keys(SECTOR_ETFS).map(s => fetchYahooQuote(s))).then(results => {
-                            const etfs = Object.keys(SECTOR_ETFS)
-                            const data = results
-                                .map((r, i) => r.status === 'fulfilled' ? { ...r.value, longName: SECTOR_ETFS[etfs[i]] ?? r.value.longName } : null)
-                                .filter((q): q is QuoteData => q !== null)
-                                .sort((a, b) => b.changePercent - a.changePercent)
-                            cacheSet('sectors', data)
-                        })
-                        : Promise.resolve(),
-                    needsMovers
-                        ? Promise.allSettled(MOVERS_SYMBOLS.map(s => fetchYahooQuote(s))).then(results => {
-                            const quotes = results
-                                .map(r => r.status === 'fulfilled' ? r.value : null)
-                                .filter((q): q is QuoteData => q !== null)
-                                .sort((a, b) => Math.abs(b.changePercent) - Math.abs(a.changePercent))
-                            cacheSet('movers', { gainers: quotes.filter(q => q.changePercent >= 0).slice(0, 5), losers: quotes.filter(q => q.changePercent < 0).slice(0, 5) })
-                        })
-                        : Promise.resolve(),
-                ])
-                aiLog('INFO', 'summary', `Market data warm-up took ${Date.now() - cacheT0}ms`)
+            if (items.length) {
+                newsContext = '\n\n=== RECENT NEWS HEADLINES ===\n' +
+                    items.map(item => `• ${item.title}: ${item.description}`).join('\n')
             }
+        }
+    } catch (err) {
+        aiLog('WARN', 'summary', 'Failed to fetch news for correlation', String(err))
+    }
 
-            const snapshot = (() => { try { return buildMarketSnapshot() } catch (e) { aiLog('WARN', 'summary', 'buildMarketSnapshot failed', e); return '(market snapshot unavailable)' } })()
+    const snapshot = (() => { try { return buildMarketSnapshot() } catch (e) { aiLog('WARN', 'summary', 'buildMarketSnapshot failed', e); return '(market snapshot unavailable)' } })()
 
-            const model = process.env.FINANCIAL_DASHBOARD_MODEL ?? 'claude-sonnet-4-6'
-            aiLog('INFO', 'summary', `Calling Anthropic API (model=${model})…`)
-            const apiT0 = Date.now()
+    const model = process.env.FINANCIAL_DASHBOARD_MODEL ?? 'claude-sonnet-4-6'
+    aiLog('INFO', 'summary', `Calling Anthropic API (model=${model})…`)
+    const apiT0 = Date.now()
 
-            const response = await fetch('https://api.anthropic.com/v1/messages', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'x-api-key': apiKey,
-                    'anthropic-version': '2023-06-01',
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'x-api-key': apiKey,
+            'anthropic-version': '2023-06-01',
+        },
+        body: JSON.stringify({
+            model,
+            max_tokens: 512,
+            system: `You are a concise Wall Street market analyst writing a brief market summary for a financial dashboard. Write 2-4 sentences covering: overall market direction with key index moves (S&P 500, Dow, Nasdaq), notable sector or volatility trends, and current sentiment. Use **bold** for key numbers and tickers. Be specific with numbers. Do not use headers or bullet points — this is a short paragraph summary. Never say "as of my knowledge cutoff" — you are analyzing live data. When explaining stock price movements, search the web for current news articles and financial news to provide the reasons behind the price changes. For example, if a tech stock drops significantly, search for recent earnings reports, product announcements, regulatory news, or analyst recommendations that might explain the move.${lang === 'zh' ? ' Write entirely in Traditional Chinese (繁體中文). Use professional Traditional Chinese financial terminology.' : ''}`,
+            messages: [
+                {
+                    role: 'user',
+                    content: `Here is today's live market data. Write a brief market summary now.\n\n${snapshot}${newsContext}`,
                 },
-                body: JSON.stringify({
-                    model,
-                    max_tokens: 512,
-                    system: `You are a concise Wall Street market analyst writing a brief market summary for a financial dashboard. Write 2-4 sentences covering: overall market direction with key index moves (S&P 500, Dow, Nasdaq), notable sector or volatility trends, and current sentiment. Use **bold** for key numbers and tickers. Be specific with numbers. Do not use headers or bullet points — this is a short paragraph summary. Never say "as of my knowledge cutoff" — you are analyzing live data.${lang === 'zh' ? ' Write entirely in Traditional Chinese (繁體中文). Use professional Traditional Chinese financial terminology.' : ''}`,
-                    messages: [
-                        {
-                            role: 'user',
-                            content: `Here is today's live market data. Write a brief market summary now.\n\n${snapshot}`,
-                        },
-                    ],
-                }),
-                signal: AbortSignal.timeout(30000),
-            })
+            ],
+        }),
+        signal: AbortSignal.timeout(30000),
+    })
 
             aiLog('INFO', 'summary', `Anthropic API responded ${response.status} in ${Date.now() - apiT0}ms`)
 
