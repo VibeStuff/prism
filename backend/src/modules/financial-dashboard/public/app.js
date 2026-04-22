@@ -119,7 +119,7 @@ const STRINGS = {
     errNoData: '⚠ 無資料',
     errAsset:  '⚠ 資產資料無法取得',
     noSummaryYet: '尚無摘要 — 點擊 ↻ 生成',
-    noAnalysisYet: '尚無分析 — 點擊 ↺ 生成。'
+    noAnalysisYet: '尚無分析 — 點擊 ↺ 生成。',
     summaryGeneratedAt: t => `生成於 ${t}`,
   },
 }
