@@ -564,6 +564,7 @@ const CHAT_TOOLS = [
             type: 'object',
             properties: {},
         },
+    },
     {
         name: 'web_search',
         description: 'Search the web for current information about stocks, companies, market events, economic data, earnings reports, or any financial topic. Use this when the user asks about recent events, specific company news, or anything not covered by the live market data already provided.',
@@ -620,7 +621,6 @@ async function executeTool(
         actions.push({ type: 'news_filter_clear' })
         return 'News filter cleared — showing all headlines'
     }
-];
 
     if (name === 'web_search') {
         const query = String(input.query ?? '').trim()
@@ -637,10 +637,6 @@ async function executeTool(
     }
 
     return `Unknown tool: ${name}`
-    }
-
-    return `Unknown tool: ${name}`
-    }
 }
 
 // ─── Sector ETFs ──────────────────────────────────────────────────────────────
