@@ -1660,7 +1660,7 @@ document.getElementById('pattern-scan-btn').addEventListener('click', async func
     var res = await fetch(API + '/api/patterns/' + encodeURIComponent(pattern.id) + '/scan', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ universe: [] }),
+      body: JSON.stringify({}),
     })
     if (!res.ok) {
       var e = await res.json().catch(function() { return {} })

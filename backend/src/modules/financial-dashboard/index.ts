@@ -1369,7 +1369,8 @@ const FinancialDashboardModule: AppModule = {
             { config: { public: true } } as never,
             async (req, reply) => {
                 const { id } = req.params
-                const universe = Array.isArray(req.body?.universe) ? req.body.universe : readWatchlist()
+                const raw = req.body?.universe
+                const universe = (Array.isArray(raw) && raw.length > 0) ? raw : readWatchlist()
                 if (!universe.length) return reply.code(400).send({ error: 'universe must be a non-empty array of ticker symbols' })
                 try {
                     const result = await scanUniverse(id, universe, req.body?.range)
