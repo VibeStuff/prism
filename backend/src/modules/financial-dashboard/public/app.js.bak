@@ -477,9 +477,6 @@ function applyI18n() {
   // Load the persisted analysis and summary for the newly selected language
   loadAnalysis()
   loadSummary()
-
-  // Pattern Lab i18n
-  applyPatternLabI18n()
 }
 
 // ── Status Indicator ──────────────────────────────────────────────────────────
@@ -1546,20 +1543,19 @@ let patternLabData = null
 
 async function loadPatternDefinitions() {
   try {
-    var res = await apiFetch('/api/patterns')
+    const res = await apiFetch('/api/patterns')
     patternDefinitions = res.patterns ?? []
   } catch {
     patternDefinitions = []
   }
   renderPatternSelect()
-  renderPatternParams()
 }
 
 function renderPatternSelect() {
-  var select = document.getElementById('pattern-select')
-  select.innerHTML = '<option value="">' + S.plSelect + '</option>' +
-    patternDefinitions.map(function(p) {
-      var params = p.type === 'consolidation-breakout'
+  const select = document.getElementById('pattern-select')
+  select.innerHTML = '<option value="">Select a pattern\u2026</option>' +
+    patternDefinitions.map(p => {
+      const params = p.type === 'consolidation-breakout'
         ? p.consolidationDaysMin + '\u2013' + p.consolidationDaysMax + 'd, \u2264' + p.maxRangePct + '% range'
         : 'MA' + p.maShort + '/MA' + p.maLong + ', \u2264' + p.maxSpreadPct + '%'
       return '<option value="' + esc(p.id) + '">' + esc(p.name) + ' (' + esc(params) + ')</option>'
@@ -1567,49 +1563,18 @@ function renderPatternSelect() {
 }
 
 function getSelectedPattern() {
-  var id = document.getElementById('pattern-select').value
+  const id = document.getElementById('pattern-select').value
   if (!id) {
-    toast(S.plSelectFirst, 'err')
+    toast('Select a pattern first', 'err')
     return null
   }
-  return patternDefinitions.find(function(p) { return p.id === id }) ?? null
+  return patternDefinitions.find(p => p.id === id) ?? null
 }
-
-function renderPatternParams() {
-  var body = document.getElementById('pattern-lab-params')
-  var bodyInner = document.getElementById('pattern-lab-params-body')
-  var pattern = getSelectedPattern()
-  if (!pattern) {
-    body.style.display = 'none'
-    return
-  }
-  body.style.display = ''
-  if (pattern.type === 'consolidation-breakout') {
-    bodyInner.innerHTML = '<span>Type: Consolidation Breakout</span>' +
-      '<span>Consolidation Days: ' + pattern.consolidationDaysMin + '\u2013' + pattern.consolidationDaysMax + '</span>' +
-      '<span>Max Range: \u2264 ' + pattern.maxRangePct + '%</span>' +
-      '<span>Volume Drop Ratio: \u2264 ' + (Math.round(pattern.volumeDropRatio * 100)) + '% of avg</span>' +
-      '<span>Breakout Volume Surge: \u2265 ' + (Math.round(pattern.breakoutVolumeSurge * 100)) + '% of avg</span>' +
-      '<span>Breakout Min Move: \u2265 ' + pattern.breakoutMinPct + '%</span>' +
-      '<span>Interval: ' + (pattern.interval === '1d' ? 'Daily' : 'Weekly') + '</span>'
-  } else {
-    bodyInner.innerHTML = '<span>Type: MA Convergence</span>' +
-      '<span>Short MA: ' + pattern.maShort + ' days</span>' +
-      '<span>Long MA: ' + pattern.maLong + ' days</span>' +
-      '<span>Max MA Spread: \u2264 ' + pattern.maxSpreadPct + '%</span>' +
-      '<span>Interval: ' + (pattern.interval === '1d' ? 'Daily' : 'Weekly') + '</span>'
-  }
-}
-
-document.addEventListener('DOMContentLoaded', function() {
-  var select = document.getElementById('pattern-select')
-  if (select) select.addEventListener('change', renderPatternParams)
-})
 
 function renderPatternLabResults() {
-  var results = document.getElementById('pattern-lab-results')
+  const results = document.getElementById('pattern-lab-results')
   if (!patternLabData) {
-    results.innerHTML = '<div class="pattern-lab-empty">' + S.plEmpty + '</div>'
+    results.innerHTML = '<div class="pattern-lab-empty">Select a pattern and run a scan or backtest to see quantified results.</div>'
     return
   }
 
@@ -1619,38 +1584,38 @@ function renderPatternLabResults() {
 
   if (type === 'scan') {
     html += '<div class="pattern-lab-block">' +
-      '<div class="pattern-lab-block-title">' + S.plScanResults + '</div>' +
-      '<div>' + S.plUniverse + ' <strong>' + data.universeSize + '</strong> ' + S.plSymbols + '</div>' +
-      '<div>' + S.plScanned + ' <strong>' + data.totalScanned + '</strong> (' + data.failedScans + ' ' + S.plFailed + ')</div>' +
-      '<div>' + S.plMatches + ' <strong>' + data.matchesFound + '</strong></div>' +
-      '<div>' + S.plSelectionRate + ' <strong>' + data.selectionRate + '%</strong></div>' +
-      '<div class="pattern-lab-block-meta">' + S.plCompletedIn + ' ' + data.scanDurationMs + 'ms</div>' +
+      '<div class="pattern-lab-block-title">Scan Results</div>' +
+      '<div>Universe: <strong>' + data.universeSize + '</strong> symbols</div>' +
+      '<div>Scanned: <strong>' + data.totalScanned + '</strong> (' + data.failedScans + ' failed)</div>' +
+      '<div>Matches: <strong>' + data.matchesFound + '</strong></div>' +
+      '<div>Selection Rate: <strong>' + data.selectionRate + '%</strong></div>' +
+      '<div class="pattern-lab-block-meta">Completed in ' + data.scanDurationMs + 'ms</div>' +
     '</div>'
 
     if (data.matches && data.matches.length > 0) {
+      html += '<div class="pattern-lab-block">' +
+        '<div class="pattern-lab-block-title">Top Matches</div>' +
+        '<table class="pattern-lab-table"><tr><th>Symbol</th><th>Date</th><th>Price</th></tr>'
       var limit = Math.min(10, data.matches.length)
-      var matchRows = ''
       for (var i = 0; i < limit; i++) {
         var m = data.matches[i]
-        matchRows += '<tr><td><strong>' + esc(m.symbol) + '</strong></td><td>' + esc(m.matchDate) + '</td><td>$' + m.priceAtMatch.toFixed(2) + '</td></tr>'
+        html += '<tr><td>' + esc(m.symbol) + '</td><td>' + esc(m.matchDate) + '</td><td>$' + m.priceAtMatch.toFixed(2) + '</td></tr>'
       }
-      html += '<div class="pattern-lab-block">' +
-        '<div class="pattern-lab-block-title">' + S.plTopMatches + '</div>' +
-        '<table class="pattern-lab-table"><tr><th>Symbol</th><th>Date</th><th>Price</th></tr>' + matchRows + '</table>' +
-        '<div class="pattern-lab-block-meta">' + S.plShowing + ' ' + limit + ' ' + S.plOf + ' ' + data.matches.length + '</div>' +
+      html += '</table>' +
+        '<div class="pattern-lab-block-meta">Showing ' + limit + ' of ' + data.matches.length + ' matches</div>' +
       '</div>'
     } else {
-      html += '<div class="pattern-lab-block" style="text-align:center;color:var(--text-muted)">' + S.plNoMatches + '</div>'
+      html += '<div class="pattern-lab-block" style="text-align:center;color:var(--text-muted)">No matches found. This is a valid outcome.</div>'
     }
   }
 
   if (type === 'backtest') {
     html += '<div class="pattern-lab-block">' +
-      '<div class="pattern-lab-block-title">' + S.plBacktestResults + '</div>' +
-      '<div>' + S.plPattern + ' <strong>' + esc(data.patternName) + '</strong></div>' +
-      '<div>' + S.plPeriod + ' ' + esc(data.dateRange.start) + ' \u2192 ' + esc(data.dateRange.end) + '</div>' +
-      '<div>' + S.plTotalMatches + ' <strong>' + data.totalMatches + '</strong></div>' +
-      '<div>' + S.plBacktestedTrades + ' <strong>' + data.backtestedTrades + '</strong></div>' +
+      '<div class="pattern-lab-block-title">Backtest Results</div>' +
+      '<div>Pattern: <strong>' + esc(data.patternName) + '</strong></div>' +
+      '<div>Period: ' + esc(data.dateRange.start) + ' to ' + esc(data.dateRange.end) + '</div>' +
+      '<div>Total Matches: <strong>' + data.totalMatches + '</strong></div>' +
+      '<div>Backtested Trades: <strong>' + data.backtestedTrades + '</strong></div>' +
     '</div>'
 
     var stats = data.horizonStats || []
@@ -1658,32 +1623,34 @@ function renderPatternLabResults() {
       var stat = stats[si]
       var isPass = (stat.pValue !== null && stat.pValue <= 0.05)
       html += '<div class="pattern-lab-block">' +
-        '<div class="pattern-lab-block-title">' + stat.horizon + ' ' + S.plForward + '</div>' +
+        '<div class="pattern-lab-block-title">' + esc(stat.horizon) + ' Forward</div>' +
         '<div class="pattern-lab-bar-row">' +
-          '<span class="pattern-lab-bar-label">' + S.plWin + '</span>' +
+          '<span class="pattern-lab-bar-label">Win</span>' +
           '<span class="pattern-lab-bar-track"><span class="pattern-lab-bar-fill blue" style="width:' + Math.round(stat.winRate * 100) + '%"></span></span>' +
           '<span class="pattern-lab-bar-value">' + (stat.winRate * 100).toFixed(0) + '%</span>' +
         '</div>' +
         '<div class="pattern-lab-bar-row">' +
-          '<span class="pattern-lab-bar-label">' + S.plAvg + '</span>' +
+          '<span class="pattern-lab-bar-label">Avg</span>' +
           '<span class="pattern-lab-bar-track"><span class="pattern-lab-bar-fill ' + (stat.avgReturn >= 0 ? 'blue' : 'gray') + '" style="width:' + Math.min(100, Math.abs(stat.avgReturn) * 10) + '%"></span></span>' +
           '<span class="pattern-lab-bar-value">' + stat.avgReturn.toFixed(2) + '%</span>' +
         '</div>' +
         '<div class="pattern-lab-bar-row">' +
-          '<span class="pattern-lab-bar-label">' + S.plDD + '</span>' +
+          '<span class="pattern-lab-bar-label">DD</span>' +
           '<span class="pattern-lab-bar-track"><span class="pattern-lab-bar-fill gray" style="width:' + Math.min(100, stat.maxDrawdown * 5) + '%"></span></span>' +
           '<span class="pattern-lab-bar-value">' + stat.maxDrawdown.toFixed(1) + '%</span>' +
         '</div>'
 
       if (stat.sharpeRatio !== null) {
-        html += '<div class="pattern-lab-bar-row"><span class="pattern-lab-bar-label">SR</span><span style="flex:1"></span><span class="pattern-lab-bar-value">' + stat.sharpeRatio.toFixed(2) + '</span></div>'
+        html += '<div class="pattern-lab-bar-row"><span class="pattern-lab-bar-label">SR</span><span></span><span class="pattern-lab-bar-value">' + stat.sharpeRatio.toFixed(2) + '</span></div>'
       }
       if (stat.pValue !== null) {
-        html += '<div class="pattern-lab-bar-row"><span class="pattern-lab-bar-label">p</span><span style="flex:1"></span><span class="pattern-lab-bar-value">' + stat.pValue.toFixed(4) + '</span></div>'
+        html += '<div class="pattern-lab-bar-row"><span class="pattern-lab-bar-label">p</span><span></span><span class="pattern-lab-bar-value">' + stat.pValue.toFixed(4) + '</span></div>'
       }
 
-      html += '<div class="pattern-lab-verdict ' + (isPass ? 'pass' : 'fail') + '">' + (isPass ? S.plSigPass : S.plSigFail) + '</div>' +
-      '</div>'
+      html += (isPass
+        ? '<div class="pattern-lab-verdict pass">Statistically significant (p \u2264 0.05). This does not guarantee future results.</div>'
+        : '<div class="pattern-lab-verdict fail">Not statistically significant (p > 0.05). May be indistinguishable from random noise.</div>'
+      ) + '</div>'
     }
 
     if (data.interpretation) {
@@ -1694,6 +1661,7 @@ function renderPatternLabResults() {
   results.innerHTML = html
 }
 
+// Pattern Lab: Define modal
 ;(function initPatternDefine() {
   var overlay = document.getElementById('pattern-define-overlay')
   var closeBtn = document.getElementById('pattern-define-close')
@@ -1703,155 +1671,154 @@ function renderPatternLabResults() {
 
   document.getElementById('pattern-define-btn').addEventListener('click', function() {
     overlay.style.display = 'flex'
-    textarea.placeholder = S.plDefinePlaceholder
     textarea.focus()
   })
 
-  closeBtn.addEventListener('click', function() { overlay.style.display = 'none' })
-  overlay.addEventListener('click', function(e) { if (e.target === overlay) overlay.style.display = 'none' })
+  closeBtn.addEventListener('click', function() {
+    overlay.style.display = 'none'
+  })
+
+  overlay.addEventListener('click', function(e) {
+    if (e.target === overlay) overlay.style.display = 'none'
+  })
 
   submitBtn.addEventListener('click', async function() {
     var text = textarea.value.trim()
     if (!text) return
+
     submitBtn.disabled = true
-    submitBtn.textContent = S.plParsing
+    submitBtn.textContent = 'Parsing\u2026'
 
     try {
       var res = await fetch(API + '/api/patterns/parse', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ description: text }),
       })
       var data = await res.json()
 
       if (data.status === 'incomplete') {
-        missing.innerHTML = '<strong>' + S.plMissingParams + '</strong><br>' +
+        missing.innerHTML = '<strong>Missing parameters:</strong><br>' +
           data.missingFields.map(function(f) { return '- ' + esc(f) }).join('<br>')
-        submitBtn.disabled = false; submitBtn.textContent = S.plSubmit; return
+        submitBtn.disabled = false
+        submitBtn.textContent = 'Submit'
+        return
       }
+
       if (data.status === 'invalid') {
         toast(data.errors ? data.errors.join(', ') : 'Invalid pattern', 'err')
-        submitBtn.disabled = false; submitBtn.textContent = S.plSubmit; return
+        submitBtn.disabled = false
+        submitBtn.textContent = 'Submit'
+        return
       }
 
       var saveRes = await fetch(API + '/api/patterns', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data.definition),
       })
       if (!saveRes.ok) {
         var err = await saveRes.json().catch(function() { return {} })
         toast(err.error || 'Failed to save', 'err')
-        submitBtn.disabled = false; submitBtn.textContent = S.plSubmit; return
+        submitBtn.disabled = false
+        submitBtn.textContent = 'Submit'
+        return
       }
 
-      overlay.style.display = 'none'; textarea.value = ''; missing.innerHTML = ''
-      toast(S.plSaved)
+      overlay.style.display = 'none'
+      textarea.value = ''
+      missing.innerHTML = ''
+      toast('Pattern saved')
       await loadPatternDefinitions()
       var saved = await saveRes.json()
       document.getElementById('pattern-select').value = saved.id
-      renderPatternParams()
     } catch (err) {
       toast(err.message, 'err')
     } finally {
-      submitBtn.disabled = false; submitBtn.textContent = S.plSubmit
+      submitBtn.disabled = false
+      submitBtn.textContent = 'Submit'
     }
   })
 })()
 
+// Pattern Lab: Scan
 document.getElementById('pattern-scan-btn').addEventListener('click', async function() {
   var pattern = getSelectedPattern()
   if (!pattern) return
+
   var btn = document.getElementById('pattern-scan-btn')
-  btn.disabled = true; btn.textContent = '...'
-  document.getElementById('pattern-lab-results').innerHTML = '<div class="pattern-lab-spinner">' + S.plScanning + '</div>'
+  btn.disabled = true
+  btn.textContent = '...'
+  var results = document.getElementById('pattern-lab-results')
+  results.innerHTML = '<div class="pattern-lab-spinner">Scanning universe\u2026</div>'
+
   try {
     var res = await fetch(API + '/api/patterns/' + encodeURIComponent(pattern.id) + '/scan', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}),
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
     })
-    if (!res.ok) { var e = await res.json().catch(function() { return {} }); throw new Error(e.error || 'HTTP ' + res.status) }
+    if (!res.ok) {
+      var e = await res.json().catch(function() { return {} })
+      throw new Error(e.error || 'HTTP ' + res.status)
+    }
     var data = await res.json()
     patternLabData = { type: 'scan', data: data }
     renderPatternLabResults()
-    toast(S.plScanToast(data.universeSize, data.matchesFound, data.selectionRate))
+    toast('Scanned ' + data.universeSize + ' symbols: ' + data.matchesFound + ' matches (' + data.selectionRate + '%)')
   } catch (err) {
-    document.getElementById('pattern-lab-results').innerHTML = '<div class="panel-error">' + esc(err.message) + '</div>'
+    results.innerHTML = '<div class="panel-error">' + esc(err.message) + '</div>'
     toast(err.message, 'err')
-  } finally { btn.disabled = false; btn.textContent = S.plScan }
+  } finally {
+    btn.disabled = false
+    btn.textContent = 'Scan'
+  }
 })
 
+// Pattern Lab: Backtest
 document.getElementById('pattern-backtest-btn').addEventListener('click', async function() {
   var pattern = getSelectedPattern()
   if (!pattern) return
+
   var btn = document.getElementById('pattern-backtest-btn')
-  btn.disabled = true; btn.textContent = '...'
-  document.getElementById('pattern-lab-results').innerHTML = '<div class="pattern-lab-spinner">' + S.plRunning + '</div>'
+  btn.disabled = true
+  btn.textContent = '...'
+  var results = document.getElementById('pattern-lab-results')
+  results.innerHTML = '<div class="pattern-lab-spinner">Running backtest\u2026</div>'
+
   try {
     var res = await fetch(API + '/api/patterns/' + encodeURIComponent(pattern.id) + '/backtest')
-    if (!res.ok) { var e = await res.json().catch(function() { return {} }); throw new Error(e.error || 'HTTP ' + res.status) }
+    if (!res.ok) {
+      var e = await res.json().catch(function() { return {} })
+      throw new Error(e.error || 'HTTP ' + res.status)
+    }
     var data = await res.json()
     patternLabData = { type: 'backtest', data: data }
     renderPatternLabResults()
+
     var hasSig = (data.horizonStats || []).some(function(s) { return s.pValue !== null && s.pValue <= 0.05 })
-    toast(hasSig ? S.plBacktestOK(data.totalMatches) : S.plBacktestFail(data.totalMatches), hasSig ? 'ok' : 'err')
+    toast(
+      hasSig
+        ? 'Backtest complete: ' + data.totalMatches + ' matches analyzed'
+        : data.totalMatches + ' matches \u2014 pattern may not be significant',
+      hasSig ? 'ok' : 'err'
+    )
   } catch (err) {
-    document.getElementById('pattern-lab-results').innerHTML = '<div class="panel-error">' + esc(err.message) + '</div>'
+    results.innerHTML = '<div class="panel-error">' + esc(err.message) + '</div>'
     toast(err.message, 'err')
-  } finally { btn.disabled = false; btn.textContent = S.plBacktest }
+  } finally {
+    btn.disabled = false
+    btn.textContent = 'Backtest'
+  }
 })
 
-function applyPatternLabI18n() {
-  var set = function(id, text) { var el = document.getElementById(id); if (el) el.textContent = text }
-  set('title-pattern-lab', S.patternLab)
-  set('title-pattern-lab-sub', S.patternLabSub)
-  set('pl-define-title', S.plDefineTitle)
-  set('pl-section-defs', isZh() ? '型態定義' : 'Pattern Definitions')
-  set('pl-section-params', isZh() ? '量化參數' : 'Quantified Parameters')
-  set('pl-section-results', isZh() ? '結果' : 'Results')
-  document.getElementById('pattern-define-btn').textContent = S.plDefine
-  document.getElementById('pattern-scan-btn').textContent = S.plScan
-  document.getElementById('pattern-backtest-btn').textContent = S.plBacktest
-  document.getElementById('pattern-define-submit').textContent = S.plSubmit
-  set('pl-survivor-bias-label', S.plSurvivorBias)
-  set('pl-survivor-bias-text', S.plSurvivorBiasText)
-  set('pl-correlation-label', S.plCorrelation)
-  set('pl-correlation-text', S.plCorrelationText)
-  set('pl-interval-label', S.plIntervalLock)
-  set('pl-interval-text', S.plIntervalLockText)
-  renderPatternSelect()
-  renderPatternParams()
-  if (patternLabData) renderPatternLabResults()
-  else document.getElementById('pattern-lab-results').innerHTML = '<div class="pattern-lab-empty">' + S.plEmpty + '</div>'
-}
-
-function isZh() { return currentLang === 'zh' }
-
-;(function initPatternLabDrawer() {
-  var fab = document.getElementById('pattern-lab-fab')
-  var drawer = document.getElementById('pattern-lab-drawer')
-  var overlay = document.getElementById('pattern-lab-overlay')
-  var closeBtn = document.getElementById('pattern-lab-drawer-close')
-
-  function openDrawer() {
-    drawer.classList.add('open'); overlay.classList.add('open'); fab.classList.add('active')
-    var aiDrawer = document.getElementById('ai-drawer')
-    var aiOverlay = document.getElementById('ai-drawer-overlay')
-    var aiFab = document.getElementById('ai-fab')
-    if (aiDrawer && aiDrawer.classList.contains('open')) {
-      aiDrawer.classList.remove('open'); aiOverlay.classList.remove('open')
-      if (aiFab) aiFab.classList.remove('active')
-    }
-  }
-
-  function closeDrawer() {
-    drawer.classList.remove('open'); overlay.classList.remove('open'); fab.classList.remove('active')
-  }
-
-  fab.addEventListener('click', function() { drawer.classList.contains('open') ? closeDrawer() : openDrawer() })
-  closeBtn.addEventListener('click', closeDrawer)
-  overlay.addEventListener('click', closeDrawer)
-  document.addEventListener('keydown', function(e) {
-    if (e.key === 'Escape' && drawer.classList.contains('open')) closeDrawer()
-  })
-})()
+// Pattern Lab: Toggle collapsible
+document.getElementById('pattern-lab-toggle').addEventListener('click', function() {
+  var toggle = document.getElementById('pattern-lab-toggle')
+  var body = document.getElementById('pattern-lab-collapsible')
+  toggle.classList.toggle('collapsed')
+  body.classList.toggle('collapsed')
+})
 
 // ── Boot ──────────────────────────────────────────────────────────────────────
 

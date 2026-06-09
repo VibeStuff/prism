@@ -119,64 +119,15 @@
           <div id="trending-body"><div class="skeleton" style="height:100px;border-radius:8px"></div></div>
         </div>
 
-        <!-- Pattern Lab / K-Line Quantified Verification -->
-        <div class="fd-card" id="pattern-lab-panel">
-          <div class="fd-card-title" style="display:flex;align-items:center;gap:8px">
-            <span id="title-pattern-lab">Pattern Lab</span>
-          </div>
-          <div class="pattern-lab-toggle" id="pattern-lab-toggle" role="button" tabindex="0">
-            <span class="pattern-lab-toggle-label">K-Line Quantified Verification</span>
-            <svg class="pattern-lab-chevron" width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M3 4.5l3 3 3-3"/>
-            </svg>
-          </div>
-          <div class="pattern-lab-collapsible collapsed" id="pattern-lab-collapsible">
-            <!-- Pattern selector -->
-            <div class="pattern-lab-select">
-              <select id="pattern-select" class="pattern-select">
-                <option value="">Select a pattern…</option>
-              </select>
-              <div class="pattern-lab-btns">
-                <button id="pattern-define-btn" class="pattern-btn" title="Define from natural language">Define</button>
-                <button id="pattern-scan-btn" class="pattern-btn" title="Scan universe">Scan</button>
-                <button id="pattern-backtest-btn" class="pattern-btn" title="Run backtest">Backtest</button>
-              </div>
-            </div>
-
-            <!-- Pattern Definition modal -->
-            <div class="pattern-define-overlay" id="pattern-define-overlay" style="display:none">
-              <div class="pattern-define-modal">
-                <div class="pattern-define-header">
-                  <span>Define Pattern via Natural Language</span>
-                  <button id="pattern-define-close" class="pattern-define-close">&times;</button>
-                </div>
-                <textarea id="pattern-define-text" class="pattern-define-text" placeholder="Describe your pattern with exact numeric thresholds. Example: &#10;consolidation breakout: 10 to 20 days, max range 3%, volume drops to 50%, volume surge 150%, breakout 2%, daily.&#10;&#10;Vague terms like 'a long time' or 'narrow range' will be rejected." rows="6"></textarea>
-                <div id="pattern-define-missing" class="pattern-define-missing"></div>
-                <div class="pattern-define-actions">
-                  <button id="pattern-define-submit" class="pattern-btn primary">Submit</button>
-                </div>
-              </div>
-            </div>
-
-            <!-- Results display area -->
-            <div id="pattern-lab-results" class="pattern-lab-results">
-              <div class="pattern-lab-empty">Select a pattern and run a scan or backtest to see quantified results.</div>
-            </div>
-
-            <!-- Disclaimers (always visible when panel is expanded) -->
-            <div class="pattern-lab-disclaimers">
-              <div class="pattern-lab-banner warn">
-                <strong>Survivor Bias Warning:</strong> This pattern was identified by scanning the entire universe. If you only examine a small subset after the fact, you create survivor bias (勝利K線陷阱).
-              </div>
-              <div class="pattern-lab-banner info">
-                <strong>Correlation ≠ Causation:</strong> Past upward moves after this pattern do not prove the pattern caused the move [1].
-              </div>
-              <div class="pattern-lab-banner info">
-                <strong>Interval Lock:</strong> Analysis locked to the pattern's declared timeframe. Changing zoom/interval alters numeric results [1].
-              </div>
-            </div>
-          </div>
-        </div>
+        <!-- Pattern Lab trigger button -->
+        <button class="pattern-lab-fab" id="pattern-lab-fab" title="Pattern Lab">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M22 12h-4l-2 2-2-8-2 6-2-8-2 2H2"/>
+            <circle cx="6" cy="18" r="1.2" fill="currentColor" stroke="none"/>
+            <circle cx="18" cy="8" r="1.2" fill="currentColor" stroke="none"/>
+            <circle cx="12" cy="14" r="1.2" fill="currentColor" stroke="none"/>
+          </svg>
+        </button>
 
       </aside>
     </div>
@@ -244,6 +195,87 @@
             <path d="M1 7h12M8 2l5 5-5 5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
           </svg>
         </button>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Pattern Lab Drawer (full-page slide-in) -->
+  <div class="pattern-lab-overlay" id="pattern-lab-overlay"></div>
+  <aside class="pattern-lab-drawer" id="pattern-lab-drawer">
+    <div class="pattern-lab-drawer-header">
+      <div class="pattern-lab-drawer-title">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M22 12h-4l-2 2-2-8-2 6-2-8-2 2H2"/>
+          <circle cx="6" cy="18" r="1.2" fill="currentColor" stroke="none"/>
+          <circle cx="18" cy="8" r="1.2" fill="currentColor" stroke="none"/>
+          <circle cx="12" cy="14" r="1.2" fill="currentColor" stroke="none"/>
+        </svg>
+        <span id="title-pattern-lab">Pattern Lab</span>
+      </div>
+      <div class="pattern-lab-drawer-header-actions">
+        <button id="pattern-lab-drawer-close" class="pattern-lab-drawer-close" title="Close">&times;</button>
+      </div>
+    </div>
+    <div class="pattern-lab-drawer-subtitle" id="title-pattern-lab-sub">K-Line Quantified Verification</div>
+
+    <div class="pattern-lab-scroll">
+      <div class="pattern-lab-section">
+        <div class="pattern-lab-section-label" id="pl-section-defs">Pattern Definitions</div>
+        <div class="pattern-lab-select">
+          <select id="pattern-select" class="pattern-select">
+            <option value="">Select a pattern…</option>
+          </select>
+          <div class="pattern-lab-btns">
+            <button id="pattern-define-btn" class="pattern-btn" title="Define from natural language">Define</button>
+            <button id="pattern-scan-btn" class="pattern-btn" title="Scan universe">Scan</button>
+            <button id="pattern-backtest-btn" class="pattern-btn" title="Run backtest">Backtest</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Define modal -->
+      <div class="pattern-define-overlay" id="pattern-define-overlay" style="display:none">
+        <div class="pattern-define-modal">
+          <div class="pattern-define-header">
+            <span id="pl-define-title">Define Pattern via Natural Language</span>
+            <button id="pattern-define-close" class="pattern-define-close">&times;</button>
+          </div>
+          <textarea id="pattern-define-text" class="pattern-define-text" rows="6"></textarea>
+          <div id="pattern-define-missing" class="pattern-define-missing"></div>
+          <div class="pattern-define-actions">
+            <button id="pattern-define-submit" class="pattern-btn primary">Submit</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Quantified Parameters (shown when pattern selected) -->
+      <div id="pattern-lab-params" class="pattern-lab-params" style="display:none">
+        <div class="pattern-lab-section-label" id="pl-section-params">Quantified Parameters</div>
+        <div id="pattern-lab-params-body"></div>
+      </div>
+
+      <!-- Results -->
+      <div class="pattern-lab-section">
+        <div class="pattern-lab-section-label" id="pl-section-results">Results</div>
+        <div id="pattern-lab-results" class="pattern-lab-results">
+          <div class="pattern-lab-empty">Select a pattern and run a scan or backtest to see quantified results.</div>
+        </div>
+      </div>
+
+      <!-- Disclaimers -->
+      <div class="pattern-lab-disclaimers">
+        <div class="pattern-lab-banner warn">
+          <strong id="pl-survivor-bias-label">Survivor Bias Warning:</strong>
+          <span id="pl-survivor-bias-text">This pattern was identified by scanning the entire universe. If you only examine a small subset after the fact, you create survivor bias (勝利K線陷阱).</span>
+        </div>
+        <div class="pattern-lab-banner info">
+          <strong id="pl-correlation-label">Correlation ≠ Causation:</strong>
+          <span id="pl-correlation-text">Past upward moves after this pattern do not prove the pattern caused the move [1].</span>
+        </div>
+        <div class="pattern-lab-banner info">
+          <strong id="pl-interval-label">Interval Lock:</strong>
+          <span id="pl-interval-text">Analysis locked to the pattern's declared timeframe. Changing zoom/interval alters numeric results [1].</span>
+        </div>
       </div>
     </div>
   </aside>
