@@ -3,6 +3,11 @@ import fs from 'fs'
 import type { FastifyInstance } from 'fastify'
 import type { AppModule, CoreServices } from '../../shared/types/module'
 import { XMLParser } from 'fast-xml-parser'
+import { loadDefinitions, addDefinition, getDefinition, validateDefinition, naturalLanguageToParams } from './patterns/definitions'
+import { scanUniverse } from './patterns/scanner'
+import { runBacktest } from './patterns/backtest'
+import { PATTERN_TOOLS } from './patterns/tools'
+import type { PatternDefinition } from './patterns/types'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -61,6 +66,7 @@ interface SearchResult {
     title: string
     url: string
     snippet: string
+    content: string
 }
 
 async function fetchWebSearch(query: string, maxResults = 5): Promise<SearchResult[]> {
@@ -117,10 +123,10 @@ async function fetchWebSearch(query: string, maxResults = 5): Promise<SearchResu
 const cache = new Map<string, CacheEntry>()
 const CACHE_TTL = 60_000
 
-function cacheGet<T>(key: string): T | null {
+function cacheGet<T>(key: string, ttl?: number): T | null {
     const entry = cache.get(key)
     if (!entry) return null
-    if (Date.now() - entry.ts > CACHE_TTL) return null
+    if (Date.now() - entry.ts > (ttl ?? CACHE_TTL)) return null
     return entry.data as T
 }
 
@@ -656,6 +662,7 @@ const CHAT_TOOLS = [
             required: ['query'],
         },
     },
+    ...PATTERN_TOOLS,
 ]
 
 async function executeTool(
@@ -711,6 +718,124 @@ async function executeTool(
         } catch (err) {
             return `Search failed: ${String(err)}`
         }
+    }
+
+    if (name === 'define_pattern') {
+        const description = String(input.description ?? '').trim()
+        if (!description) return 'Error: description is required. Describe your pattern in natural language with exact numeric thresholds.'
+        const { definition, missingFields } = naturalLanguageToParams(description)
+        if (missingFields.length > 0) {
+            return `I need more precise parameters before I can define this pattern. The following fields are missing or ambiguous:\n- ${missingFields.join('\n- ')}\n\nPlease re-describe with exact numbers for each parameter. For example: "consolidation breakout: 10 to 20 days, max range 3%, volume drops to 50%, volume surge 150%, breakout 2%, daily".`
+        }
+        const { valid, errors } = validateDefinition(definition)
+        if (!valid) {
+            return `The pattern definition has validation errors:\n- ${errors.join('\n- ')}`
+        }
+        const saved = addDefinition(definition as any)
+        const params: string[] = []
+        if (definition.type === 'consolidation-breakout') {
+            params.push(`Consolidation Days: ${definition.consolidationDaysMin}–${definition.consolidationDaysMax}`)
+            params.push(`Max Range: ${definition.maxRangePct}%`)
+            params.push(`Volume Drop Ratio: ${Math.round((definition.volumeDropRatio ?? 0) * 100)}%`)
+            params.push(`Breakout Volume Surge: ${Math.round((definition.breakoutVolumeSurge ?? 0) * 100)}%`)
+            params.push(`Breakout Min: ${definition.breakoutMinPct}%`)
+        } else {
+            params.push(`MA Short: ${definition.maShort} days`)
+            params.push(`MA Long: ${definition.maLong} days`)
+            params.push(`Max MA Spread: ${definition.maxSpreadPct}%`)
+        }
+        params.push(`Interval: ${definition.interval === '1d' ? 'Daily' : 'Weekly'}`)
+        return `Pattern defined and saved with ID: "${saved.id}"\n\nQuantified Parameters:\n- ${params.join('\n- ')}\n\nThis pattern replaces vague language ("consolidated for a long time") with exact numeric thresholds. No visual guesswork — every trigger is a mathematical predicate.`
+    }
+
+    if (name === 'scan_pattern') {
+        const patternId = String(input.patternId ?? '').trim()
+        const universe = Array.isArray(input.universe) ? (input.universe as unknown[]).map(String) : []
+        if (!patternId) return 'Error: patternId is required'
+        if (!universe.length) return 'Error: universe must be a non-empty array of ticker symbols'
+
+        const pattern = getDefinition(patternId)
+        if (!pattern) return `Error: Pattern "${patternId}" not found. Available patterns: ${loadDefinitions().map(d => d.id).join(', ')}`
+
+        try {
+            const range = typeof input.range === 'string' ? input.range : undefined
+            const result = await scanUniverse(patternId, universe, range)
+            const lines: string[] = []
+            lines.push(`## Scan Results: "${pattern.name}" (ID: ${patternId})`)
+            lines.push('')
+            lines.push(`- **Universe Size**: ${result.universeSize}`)
+            lines.push(`- **Successfully Scanned**: ${result.totalScanned}`)
+            lines.push(`- **Failed Scans**: ${result.failedScans}`)
+            lines.push(`- **Matches Found**: ${result.matchesFound}`)
+            lines.push(`- **Selection Rate**: ${result.selectionRate}% (${result.matchesFound} out of ${result.universeSize} = ${result.selectionRate}%)`)
+            lines.push(`- **Scan Duration**: ${result.scanDurationMs}ms`)
+            lines.push('')
+            if (result.matches.length > 0) {
+                lines.push('**⚠ Survivor Bias Warning**: This scan included ALL symbols in the provided universe. If you had only examined 40 matching stocks out of 1,000 after the fact, you would create survivor bias (勝利K線陷阱). The selection rate tells you how rare this pattern actually is.')
+                lines.push('')
+                lines.push('### Top Matches (first 10):')
+                for (const m of result.matches.slice(0, 10)) {
+                    lines.push(`- **${m.symbol}** on ${m.matchDate} @ $${m.priceAtMatch.toFixed(2)} (trigger: ${JSON.stringify(m.triggerParams)})`)
+                }
+                if (result.matches.length > 10) {
+                    lines.push(`  ... and ${result.matches.length - 10} more`)
+                }
+            } else {
+                lines.push('**Result**: No matches found. This exact parameter set did not trigger in the scanned date range. This is a valid and honest outcome.')
+            }
+            return lines.join('\n')
+        } catch (err) {
+            return `Scan failed: ${String(err)}`
+        }
+    }
+
+    if (name === 'run_backtest') {
+        const patternId = String(input.patternId ?? '').trim()
+        const universe = Array.isArray(input.universe) ? (input.universe as unknown[]).map(String) : []
+        if (!patternId) return 'Error: patternId is required'
+        if (!universe.length) return 'Error: universe must be a non-empty array of ticker symbols'
+
+        const pattern = getDefinition(patternId)
+        if (!pattern) return `Error: Pattern "${patternId}" not found.`
+
+        try {
+            const startDate = typeof input.startDate === 'string' ? input.startDate : undefined
+            const endDate = typeof input.endDate === 'string' ? input.endDate : undefined
+            const stopLoss = typeof input.stopLoss === 'number' ? input.stopLoss : undefined
+            const result = await runBacktest(patternId, universe, startDate, endDate, stopLoss)
+            return result.interpretation
+        } catch (err) {
+            return `Backtest failed: ${String(err)}`
+        }
+    }
+
+    if (name === 'optimize_params') {
+        const patternId = String(input.patternId ?? '').trim()
+        const universe = Array.isArray(input.universe) ? (input.universe as unknown[]).map(String) : []
+        if (!patternId) return 'Error: patternId is required'
+        if (!universe.length) return 'Error: universe must be a non-empty array of ticker symbols'
+
+        const pattern = getDefinition(patternId)
+        if (!pattern) return `Error: Pattern "${patternId}" not found.`
+
+        // Test a few parameter variations and report which showed better stats
+        const suggestions: string[] = []
+
+        if (pattern.type === 'consolidation-breakout') {
+            const tighterRange = { ...pattern, maxRangePct: pattern.maxRangePct * 0.7 }
+            const looserRange = { ...pattern, maxRangePct: pattern.maxRangePct * 1.5 }
+            suggestions.push(`Try tightening the max range to ${Math.round(tighterRange.maxRangePct * 10) / 10}% or loosening to ${Math.round(looserRange.maxRangePct * 10) / 10}% and compare backtest results.`)
+            suggestions.push(`Vary consolidation days: try ${pattern.consolidationDaysMin - 2}–${pattern.consolidationDaysMax - 5} for shorter windows or ${pattern.consolidationDaysMin + 5}–${pattern.consolidationDaysMax + 10} for longer ones.`)
+            suggestions.push(`Test breakout thresholds: ${Math.round(pattern.breakoutMinPct * 0.5 * 10) / 10}%, ${pattern.breakoutMinPct}%, ${Math.round(pattern.breakoutMinPct * 2 * 10) / 10}%.`)
+        } else if (pattern.type === 'ma-convergence') {
+            suggestions.push(`Try different MA pairs: (5, 20), (10, 50), (20, 100), (50, 200).`)
+            suggestions.push(`Vary the max spread: ${Math.round(pattern.maxSpreadPct * 0.5 * 10) / 10}%, ${pattern.maxSpreadPct}%, ${Math.round(pattern.maxSpreadPct * 2 * 10) / 10}%.`)
+        }
+
+        suggestions.push(`Always re-run run_backtest after each parameter change to verify statistical significance.`)
+        suggestions.push(`Remember: past performance does not guarantee future results (correlation ≠ causation).`)
+
+        return `## Parameter Optimization Suggestions for "${pattern.name}" (${pattern.interval === '1d' ? 'Daily' : 'Weekly'})\n\n- ${suggestions.join('\n- ')}\n\nEach suggestion should be defined as a new pattern (use define_pattern) and independently backtested with run_backtest to compare statistical significance across parameter sets.`
     }
 
     return `Unknown tool: ${name}`
@@ -1190,6 +1315,89 @@ const FinancialDashboardModule: AppModule = {
                 return reply.code(502).send({ error: 'Failed to fetch spread feed', detail: String(err) })
             }
         })
+
+        // ── Pattern Lab: Get all definitions ───────────────────────────────
+        server.get(`${prefix}/api/patterns`, { config: { public: true } } as never, async () => {
+            return { patterns: loadDefinitions() }
+        })
+
+        // ── Pattern Lab: Get single definition ─────────────────────────────
+        server.get<{ Params: { id: string } }>(
+            `${prefix}/api/patterns/:id`,
+            { config: { public: true } } as never,
+            async (req, reply) => {
+                const def = getDefinition(req.params.id)
+                if (!def) return reply.code(404).send({ error: 'Pattern not found' })
+                return def
+            },
+        )
+
+        // ── Pattern Lab: Create/Update definition ──────────────────────────
+        server.post<{ Body: Partial<PatternDefinition> }>(
+            `${prefix}/api/patterns`,
+            { config: { public: true } } as never,
+            async (req, reply) => {
+                const body = req.body
+                const { valid, errors } = validateDefinition(body)
+                if (!valid) return reply.code(400).send({ error: 'Invalid pattern definition', details: errors })
+
+                const saved = addDefinition(body as PatternDefinition)
+                return saved
+            },
+        )
+
+        // ── Pattern Lab: Natural language to params ────────────────────────
+        server.post<{ Body: { description?: string } }>(
+            `${prefix}/api/patterns/parse`,
+            { config: { public: true } } as never,
+            async (req, reply) => {
+                const description = (req.body?.description ?? '').trim()
+                if (!description) return reply.code(400).send({ error: 'description is required' })
+                const { definition, missingFields } = naturalLanguageToParams(description)
+                if (missingFields.length > 0) {
+                    return { status: 'incomplete', definition, missingFields }
+                }
+                const { valid, errors } = validateDefinition(definition)
+                if (!valid) return { status: 'invalid', definition, errors }
+                return { status: 'valid', definition }
+            },
+        )
+
+        // ── Pattern Lab: Scan universe ──────────────────────────────────────
+        server.post<{ Params: { id: string }; Body: { universe?: string[]; range?: string } }>(
+            `${prefix}/api/patterns/:id/scan`,
+            { config: { public: true } } as never,
+            async (req, reply) => {
+                const { id } = req.params
+                const universe = Array.isArray(req.body?.universe) ? req.body.universe : readWatchlist()
+                if (!universe.length) return reply.code(400).send({ error: 'universe must be a non-empty array of ticker symbols' })
+                try {
+                    const result = await scanUniverse(id, universe, req.body?.range)
+                    return { ...result, universe }
+                } catch (err) {
+                    return reply.code(500).send({ error: `Scan failed: ${String(err)}` })
+                }
+            },
+        )
+
+        // ── Pattern Lab: Run backtest ─────────────────────────────────────
+        server.get<{ Params: { id: string }; Querystring: { universe?: string; startDate?: string; endDate?: string; stopLoss?: string } }>(
+            `${prefix}/api/patterns/:id/backtest`,
+            { config: { public: true } } as never,
+            async (req, reply) => {
+                const { id } = req.params
+                const universeRaw = req.query.universe ?? ''
+                const universe = universeRaw ? universeRaw.split(',').map(s => s.trim().toUpperCase()).filter(Boolean) : readWatchlist()
+                if (!universe.length) return reply.code(400).send({ error: 'universe must be a non-empty list of ticker symbols' })
+                const stopLoss = req.query.stopLoss ? parseFloat(req.query.stopLoss) : undefined
+                try {
+                    const result = await runBacktest(id, universe, req.query.startDate, req.query.endDate, stopLoss)
+                    return result
+                } catch (err) {
+                    return reply.code(500).send({ error: `Backtest failed: ${String(err)}` })
+                }
+            },
+        )
 
         // ── AI Analysis: helper to generate fresh analysis ───────────────────
         const aiLog = (level: 'INFO' | 'WARN' | 'ERROR', context: string, msg: string, detail?: unknown) => {

@@ -1440,6 +1440,290 @@ document.querySelectorAll('.range-btn').forEach(btn => {
   })
 })()
 
+// ── Pattern Lab / K-Line Quantified Verification ───────────────────────────
+
+let patternDefinitions = []
+let patternLabData = null
+
+async function loadPatternDefinitions() {
+  try {
+    const res = await apiFetch('/api/patterns')
+    patternDefinitions = res.patterns ?? []
+  } catch {
+    patternDefinitions = []
+  }
+  renderPatternSelect()
+}
+
+function renderPatternSelect() {
+  const select = document.getElementById('pattern-select')
+  select.innerHTML = '<option value="">Select a pattern\u2026</option>' +
+    patternDefinitions.map(p => {
+      const params = p.type === 'consolidation-breakout'
+        ? p.consolidationDaysMin + '\u2013' + p.consolidationDaysMax + 'd, \u2264' + p.maxRangePct + '% range'
+        : 'MA' + p.maShort + '/MA' + p.maLong + ', \u2264' + p.maxSpreadPct + '%'
+      return '<option value="' + esc(p.id) + '">' + esc(p.name) + ' (' + esc(params) + ')</option>'
+    }).join('')
+}
+
+function getSelectedPattern() {
+  const id = document.getElementById('pattern-select').value
+  if (!id) {
+    toast('Select a pattern first', 'err')
+    return null
+  }
+  return patternDefinitions.find(p => p.id === id) ?? null
+}
+
+function renderPatternLabResults() {
+  const results = document.getElementById('pattern-lab-results')
+  if (!patternLabData) {
+    results.innerHTML = '<div class="pattern-lab-empty">Select a pattern and run a scan or backtest to see quantified results.</div>'
+    return
+  }
+
+  var type = patternLabData.type
+  var data = patternLabData.data
+  var html = ''
+
+  if (type === 'scan') {
+    html += '<div class="pattern-lab-block">' +
+      '<div class="pattern-lab-block-title">Scan Results</div>' +
+      '<div>Universe: <strong>' + data.universeSize + '</strong> symbols</div>' +
+      '<div>Scanned: <strong>' + data.totalScanned + '</strong> (' + data.failedScans + ' failed)</div>' +
+      '<div>Matches: <strong>' + data.matchesFound + '</strong></div>' +
+      '<div>Selection Rate: <strong>' + data.selectionRate + '%</strong></div>' +
+      '<div class="pattern-lab-block-meta">Completed in ' + data.scanDurationMs + 'ms</div>' +
+    '</div>'
+
+    if (data.matches && data.matches.length > 0) {
+      html += '<div class="pattern-lab-block">' +
+        '<div class="pattern-lab-block-title">Top Matches</div>' +
+        '<table class="pattern-lab-table"><tr><th>Symbol</th><th>Date</th><th>Price</th></tr>'
+      var limit = Math.min(10, data.matches.length)
+      for (var i = 0; i < limit; i++) {
+        var m = data.matches[i]
+        html += '<tr><td>' + esc(m.symbol) + '</td><td>' + esc(m.matchDate) + '</td><td>$' + m.priceAtMatch.toFixed(2) + '</td></tr>'
+      }
+      html += '</table>' +
+        '<div class="pattern-lab-block-meta">Showing ' + limit + ' of ' + data.matches.length + ' matches</div>' +
+      '</div>'
+    } else {
+      html += '<div class="pattern-lab-block" style="text-align:center;color:var(--text-muted)">No matches found. This is a valid outcome.</div>'
+    }
+  }
+
+  if (type === 'backtest') {
+    html += '<div class="pattern-lab-block">' +
+      '<div class="pattern-lab-block-title">Backtest Results</div>' +
+      '<div>Pattern: <strong>' + esc(data.patternName) + '</strong></div>' +
+      '<div>Period: ' + esc(data.dateRange.start) + ' to ' + esc(data.dateRange.end) + '</div>' +
+      '<div>Total Matches: <strong>' + data.totalMatches + '</strong></div>' +
+      '<div>Backtested Trades: <strong>' + data.backtestedTrades + '</strong></div>' +
+    '</div>'
+
+    var stats = data.horizonStats || []
+    for (var si = 0; si < stats.length; si++) {
+      var stat = stats[si]
+      var isPass = (stat.pValue !== null && stat.pValue <= 0.05)
+      html += '<div class="pattern-lab-block">' +
+        '<div class="pattern-lab-block-title">' + esc(stat.horizon) + ' Forward</div>' +
+        '<div class="pattern-lab-bar-row">' +
+          '<span class="pattern-lab-bar-label">Win</span>' +
+          '<span class="pattern-lab-bar-track"><span class="pattern-lab-bar-fill blue" style="width:' + Math.round(stat.winRate * 100) + '%"></span></span>' +
+          '<span class="pattern-lab-bar-value">' + (stat.winRate * 100).toFixed(0) + '%</span>' +
+        '</div>' +
+        '<div class="pattern-lab-bar-row">' +
+          '<span class="pattern-lab-bar-label">Avg</span>' +
+          '<span class="pattern-lab-bar-track"><span class="pattern-lab-bar-fill ' + (stat.avgReturn >= 0 ? 'blue' : 'gray') + '" style="width:' + Math.min(100, Math.abs(stat.avgReturn) * 10) + '%"></span></span>' +
+          '<span class="pattern-lab-bar-value">' + stat.avgReturn.toFixed(2) + '%</span>' +
+        '</div>' +
+        '<div class="pattern-lab-bar-row">' +
+          '<span class="pattern-lab-bar-label">DD</span>' +
+          '<span class="pattern-lab-bar-track"><span class="pattern-lab-bar-fill gray" style="width:' + Math.min(100, stat.maxDrawdown * 5) + '%"></span></span>' +
+          '<span class="pattern-lab-bar-value">' + stat.maxDrawdown.toFixed(1) + '%</span>' +
+        '</div>'
+
+      if (stat.sharpeRatio !== null) {
+        html += '<div class="pattern-lab-bar-row"><span class="pattern-lab-bar-label">SR</span><span></span><span class="pattern-lab-bar-value">' + stat.sharpeRatio.toFixed(2) + '</span></div>'
+      }
+      if (stat.pValue !== null) {
+        html += '<div class="pattern-lab-bar-row"><span class="pattern-lab-bar-label">p</span><span></span><span class="pattern-lab-bar-value">' + stat.pValue.toFixed(4) + '</span></div>'
+      }
+
+      html += (isPass
+        ? '<div class="pattern-lab-verdict pass">Statistically significant (p \u2264 0.05). This does not guarantee future results.</div>'
+        : '<div class="pattern-lab-verdict fail">Not statistically significant (p > 0.05). May be indistinguishable from random noise.</div>'
+      ) + '</div>'
+    }
+
+    if (data.interpretation) {
+      html += '<div class="pattern-lab-block" style="white-space:pre-wrap;font-size:0.68rem">' + md(data.interpretation) + '</div>'
+    }
+  }
+
+  results.innerHTML = html
+}
+
+// Pattern Lab: Define modal
+;(function initPatternDefine() {
+  var overlay = document.getElementById('pattern-define-overlay')
+  var closeBtn = document.getElementById('pattern-define-close')
+  var textarea = document.getElementById('pattern-define-text')
+  var missing = document.getElementById('pattern-define-missing')
+  var submitBtn = document.getElementById('pattern-define-submit')
+
+  document.getElementById('pattern-define-btn').addEventListener('click', function() {
+    overlay.style.display = 'flex'
+    textarea.focus()
+  })
+
+  closeBtn.addEventListener('click', function() {
+    overlay.style.display = 'none'
+  })
+
+  overlay.addEventListener('click', function(e) {
+    if (e.target === overlay) overlay.style.display = 'none'
+  })
+
+  submitBtn.addEventListener('click', async function() {
+    var text = textarea.value.trim()
+    if (!text) return
+
+    submitBtn.disabled = true
+    submitBtn.textContent = 'Parsing\u2026'
+
+    try {
+      var res = await fetch(API + '/api/patterns/parse', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ description: text }),
+      })
+      var data = await res.json()
+
+      if (data.status === 'incomplete') {
+        missing.innerHTML = '<strong>Missing parameters:</strong><br>' +
+          data.missingFields.map(function(f) { return '- ' + esc(f) }).join('<br>')
+        submitBtn.disabled = false
+        submitBtn.textContent = 'Submit'
+        return
+      }
+
+      if (data.status === 'invalid') {
+        toast(data.errors ? data.errors.join(', ') : 'Invalid pattern', 'err')
+        submitBtn.disabled = false
+        submitBtn.textContent = 'Submit'
+        return
+      }
+
+      var saveRes = await fetch(API + '/api/patterns', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data.definition),
+      })
+      if (!saveRes.ok) {
+        var err = await saveRes.json().catch(function() { return {} })
+        toast(err.error || 'Failed to save', 'err')
+        submitBtn.disabled = false
+        submitBtn.textContent = 'Submit'
+        return
+      }
+
+      overlay.style.display = 'none'
+      textarea.value = ''
+      missing.innerHTML = ''
+      toast('Pattern saved')
+      await loadPatternDefinitions()
+      var saved = await saveRes.json()
+      document.getElementById('pattern-select').value = saved.id
+    } catch (err) {
+      toast(err.message, 'err')
+    } finally {
+      submitBtn.disabled = false
+      submitBtn.textContent = 'Submit'
+    }
+  })
+})()
+
+// Pattern Lab: Scan
+document.getElementById('pattern-scan-btn').addEventListener('click', async function() {
+  var pattern = getSelectedPattern()
+  if (!pattern) return
+
+  var btn = document.getElementById('pattern-scan-btn')
+  btn.disabled = true
+  btn.textContent = '...'
+  var results = document.getElementById('pattern-lab-results')
+  results.innerHTML = '<div class="pattern-lab-spinner">Scanning universe\u2026</div>'
+
+  try {
+    var res = await fetch(API + '/api/patterns/' + encodeURIComponent(pattern.id) + '/scan', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ universe: [] }),
+    })
+    if (!res.ok) {
+      var e = await res.json().catch(function() { return {} })
+      throw new Error(e.error || 'HTTP ' + res.status)
+    }
+    var data = await res.json()
+    patternLabData = { type: 'scan', data: data }
+    renderPatternLabResults()
+    toast('Scanned ' + data.universeSize + ' symbols: ' + data.matchesFound + ' matches (' + data.selectionRate + '%)')
+  } catch (err) {
+    results.innerHTML = '<div class="panel-error">' + esc(err.message) + '</div>'
+    toast(err.message, 'err')
+  } finally {
+    btn.disabled = false
+    btn.textContent = 'Scan'
+  }
+})
+
+// Pattern Lab: Backtest
+document.getElementById('pattern-backtest-btn').addEventListener('click', async function() {
+  var pattern = getSelectedPattern()
+  if (!pattern) return
+
+  var btn = document.getElementById('pattern-backtest-btn')
+  btn.disabled = true
+  btn.textContent = '...'
+  var results = document.getElementById('pattern-lab-results')
+  results.innerHTML = '<div class="pattern-lab-spinner">Running backtest\u2026</div>'
+
+  try {
+    var res = await fetch(API + '/api/patterns/' + encodeURIComponent(pattern.id) + '/backtest')
+    if (!res.ok) {
+      var e = await res.json().catch(function() { return {} })
+      throw new Error(e.error || 'HTTP ' + res.status)
+    }
+    var data = await res.json()
+    patternLabData = { type: 'backtest', data: data }
+    renderPatternLabResults()
+
+    var hasSig = (data.horizonStats || []).some(function(s) { return s.pValue !== null && s.pValue <= 0.05 })
+    toast(
+      hasSig
+        ? 'Backtest complete: ' + data.totalMatches + ' matches analyzed'
+        : data.totalMatches + ' matches \u2014 pattern may not be significant',
+      hasSig ? 'ok' : 'err'
+    )
+  } catch (err) {
+    results.innerHTML = '<div class="panel-error">' + esc(err.message) + '</div>'
+    toast(err.message, 'err')
+  } finally {
+    btn.disabled = false
+    btn.textContent = 'Backtest'
+  }
+})
+
+// Pattern Lab: Toggle collapsible
+document.getElementById('pattern-lab-toggle').addEventListener('click', function() {
+  var toggle = document.getElementById('pattern-lab-toggle')
+  var body = document.getElementById('pattern-lab-collapsible')
+  toggle.classList.toggle('collapsed')
+  body.classList.toggle('collapsed')
+})
+
 // ── Boot ──────────────────────────────────────────────────────────────────────
 
 // Apply saved language immediately (sets all static labels, button states, placeholders)
@@ -1447,6 +1731,7 @@ applyI18n()
 
 loadAll()
 loadAnalysis()
+loadPatternDefinitions()
 
 setInterval(() => { loadAll() }, 60_000)
 

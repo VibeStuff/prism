@@ -1,0 +1,38 @@
+[
+  {
+    "id": "consolidation-breakout-default",
+    "name": "Consolidation Breakout",
+    "type": "consolidation-breakout",
+    "consolidationDaysMin": 10,
+    "consolidationDaysMax": 30,
+    "maxRangePct": 3,
+    "volumeDropRatio": 0.5,
+    "breakoutVolumeSurge": 1.5,
+    "breakoutMinPct": 2,
+    "maShort": 0,
+    "maLong": 0,
+    "maxSpreadPct": 0,
+    "interval": "1d",
+    "description": "Price trapped in a narrow range (≤3%) for 10–30 days with volume contraction (≤50% of average), followed by a breakout above the range with ≥150% volume surge and ≥2% price move.",
+    "createdAt": "2026-01-01T00:00:00.000Z",
+    "updatedAt": "2026-01-01T00:00:00.000Z"
+  },
+  {
+    "id": "ma-convergence-default",
+    "name": "MA Convergence",
+    "type": "ma-convergence",
+    "consolidationDaysMin": 0,
+    "consolidationDaysMax": 0,
+    "maxRangePct": 0,
+    "volumeDropRatio": 0,
+    "breakoutVolumeSurge": 0,
+    "breakoutMinPct": 0,
+    "maShort": 10,
+    "maLong": 50,
+    "maxSpreadPct": 1,
+    "interval": "1d",
+    "description": "Short-term (10-day) and long-term (50-day) moving averages converge within 1% spread, indicating potential volatility expansion.",
+    "createdAt": "2026-01-01T00:00:00.000Z",
+    "updatedAt": "2026-01-01T00:00:00.000Z"
+  }
+]
